@@ -36,7 +36,7 @@ head -c 65536  /dev/urandom > "$d/bootmgr.efi"
 head -c 262144 /dev/urandom > "$d/boot/bcd"
 head -c 262144 /dev/urandom > "$d/efi/microsoft/boot/bcd"
 if [ -n "$FAKE_EFI" ]; then cp "$FAKE_EFI" "$d/efi/boot/bootx64.efi"; else head -c 1500000 /dev/urandom > "$d/efi/boot/bootx64.efi"; fi
-echo "fake setup" > "$d/setup.exe"
+echo "fake setup" > "$d/setup.exe"; echo "fake setup" > "$d/sources/setup.exe"
 echo "fake" > "$d/support/readme.txt"
 genisoimage -quiet -iso-level 3 -udf -allow-limited-size -V WIN_FAKE -o "$out" "$d"
 rm -rf "$d"

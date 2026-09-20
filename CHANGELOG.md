@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.6.1 (NTFS volume must fit its partition)
+
+- **Another cause of "a media driver is missing" fixed.** Right after
+  partitioning, the kernel can still report the old partition size, and
+  `mkfs.ntfs` then wrote a volume larger than its partition (one boot sector
+  claimed 31.1 M sectors on a 30.3 M sector disk). UEFI:NTFS still boots such
+  a volume, but Windows treats it as corrupt and never mounts it. Rufux now
+  waits until the partition size is consistent with the disk, gives
+  `mkfs.ntfs` the exact sector count, and refuses a finished volume that does
+  not fit its partition. This adds to the boot-sector geometry fix in 1.6.0.
+- tests: the layout test checks the NTFS sector count against the partition;
+  the fake Windows ISO now has sources/setup.exe like a real one.
+
 ## 1.6.0 (NTFS Windows media fixes)
 
 NTFS sticks booted but Windows Setup stopped with "a media driver your

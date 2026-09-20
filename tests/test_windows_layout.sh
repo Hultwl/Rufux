@@ -36,6 +36,10 @@ for scheme in gpt dos; do
     echo "$p2" | grep -q "type=ef" || bad "dos: partition 2 is not type ef"
   fi
   cmp -s ${L}p2 "$HERE/../res/uefi/uefi-ntfs.img" || bad "$scheme: partition 2 differs from the UEFI:NTFS image"
+  # The NTFS volume must fit its partition, or Windows will not mount it.
+  bpb=$(dd if=${L}p1 bs=1 skip=40 count=8 2>/dev/null | od -An -tu8 | tr -d ' ')
+  psz=$(blockdev --getsz ${L}p1)
+  [ -n "$bpb" ] && [ "$bpb" -le "$psz" ] || bad "$scheme: NTFS boot sector says $bpb sectors but the partition has $psz"
   if mount -t ntfs-3g ${L}p1 $T/m; then
     diff -rq $T/x $T/m --exclude='$OEM$' >$T/diff 2>&1 || { bad "$scheme: tree differs from the ISO"; head -5 $T/diff; }
     grep -q BypassNRO $T/m/sources/'$OEM$'/'$$'/Panther/unattend.xml || bad "$scheme: Panther unattend.xml missing"

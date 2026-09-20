@@ -3,6 +3,10 @@
 #include "exec.h"
 #include <stdio.h>
 #include <string.h>
+#include <limits.h>
+#include <stdint.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include <stdlib.h>
 
 // First sector of a partition node (sysfs), 0 if unknown. mkfs.ntfs writes
@@ -18,6 +22,37 @@ static unsigned long long part_start_sector(const char *dev) {
   if (!fgets(buf, sizeof buf, f)) buf[0] = 0;
   fclose(f);
   return strtoull(buf, NULL, 10);
+}
+
+static unsigned long long sysfs_num(const char *name, const char *file) {
+  char p[300], buf[64] = {0};
+  snprintf(p, sizeof p, "/sys/class/block/%s/%s", name, file);
+  FILE *f = fopen(p, "r");
+  if (!f) return 0;
+  if (!fgets(buf, sizeof buf, f)) buf[0] = 0;
+  fclose(f);
+  return strtoull(buf, NULL, 10);
+}
+
+// Size in 512-byte sectors of partition `dev`, once the kernel's view has settled.
+// Right after sfdisk the node can still show the OLD size, and a filesystem made
+// then overflows the new partition: UEFI:NTFS still boots it, but Windows treats
+// the volume as corrupt and never mounts it ("a media driver is missing").
+// Returns 0 if the size never became consistent with the disk.
+static unsigned long long settled_part_sectors(const char *dev) {
+  const char *base = strrchr(dev, '/');
+  base = base ? base + 1 : dev;
+  char link[300], real[PATH_MAX];
+  snprintf(link, sizeof link, "/sys/class/block/%s/..", base);
+  if (!realpath(link, real)) return 0;
+  const char *disk = strrchr(real, '/');
+  disk = disk ? disk + 1 : real;
+  for (int i = 0; i < 25; i++) {
+    unsigned long long sz = sysfs_num(base, "size"), st = sysfs_num(base, "start"), dk = sysfs_num(disk, "size");
+    if (sz > 0 && dk > 0 && st + sz <= dk) return sz;
+    usleep(200000);
+  }
+  return 0;
 }
 
 int rufux_format(const char *dst, const RufuxMkfsOpts *o,
@@ -41,10 +76,11 @@ int rufux_format(const char *dst, const RufuxMkfsOpts *o,
   const char **av = NULL;
 
   // Function-local argv buffers (reentrant; no shared static state).
-  char lab_vfat[160], lab_ntfs[160], start_ntfs[32], clus_ntfs[32];
+  char lab_vfat[160], lab_ntfs[160], start_ntfs[32], clus_ntfs[32], count_ntfs[32];
+  unsigned long long part_sectors = 0;
   char lab_exfat[160], lab_ext4[160], sec_vfat[32];
   // mkfs.ntfs -F -Q -p S -H 255 -S 63 [-c N] [-L label] dev NULL = 16 slots
-  const char *a_vfat[9], *a_ntfs[16], *a_exfat[5], *a_ext4[7], *a_udf[4];
+  const char *a_vfat[9], *a_ntfs[18], *a_exfat[5], *a_ext4[7], *a_udf[4];
   if (!strcmp(o->fs, "vfat") || !strcmp(o->fs, "fat32")) {
     if (!rufux_have("mkfs.vfat")) { snprintf(err, cap, "mkfs.vfat missing"); return -1; }
     int i = 0;
@@ -76,7 +112,18 @@ int rufux_format(const char *dst, const RufuxMkfsOpts *o,
       a_ntfs[i++] = "-c"; a_ntfs[i++] = clus_ntfs;  // was silently dropped
     }
     if (o->label && o->label[0]) { snprintf(lab_ntfs, sizeof lab_ntfs, "%s", o->label); a_ntfs[i++] = "-L"; a_ntfs[i++] = lab_ntfs; }
-    a_ntfs[i++] = dst; a_ntfs[i] = NULL; av = a_ntfs;
+    a_ntfs[i++] = dst;
+    if (!o->dry_run) {
+      part_sectors = settled_part_sectors(dst);
+      if (part_sectors == 0 && strstr(dst, "/dev/")) {
+        snprintf(err, cap, "the kernel reports an inconsistent size for '%s' (partition table not re-read); "
+                           "unplug and replug the drive and try again", dst);
+        return -1;
+      }
+      // The exact sector count, so the volume can never outgrow its partition.
+      if (part_sectors) { snprintf(count_ntfs, sizeof count_ntfs, "%llu", part_sectors); a_ntfs[i++] = count_ntfs; }
+    }
+    a_ntfs[i] = NULL; av = a_ntfs;
   } else if (!strcmp(o->fs, "exfat")) {
     if (!rufux_have("mkfs.exfat")) { snprintf(err, cap, "mkfs.exfat missing"); return -1; }
     int i = 0;
@@ -103,6 +150,21 @@ int rufux_format(const char *dst, const RufuxMkfsOpts *o,
   if (rufux_run(av, o->dry_run) != 0) {
     if (!o->dry_run) snprintf(err, cap, "mkfs.%s failed on '%s'", o->fs, dst);
     return o->dry_run ? 0 : -1;
+  }
+  if (!o->dry_run && !strcmp(o->fs, "ntfs") && part_sectors) {
+    unsigned char bs[512];
+    int fd = open(dst, O_RDONLY | O_CLOEXEC);
+    ssize_t n = fd >= 0 ? pread(fd, bs, sizeof bs, 0) : -1;
+    if (fd >= 0) close(fd);
+    if (n == (ssize_t)sizeof bs) {
+      unsigned long long total = 0;
+      for (int k = 7; k >= 0; k--) total = (total << 8) | bs[0x28 + k];
+      if (total > part_sectors) {
+        snprintf(err, cap, "NTFS volume (%llu sectors) is larger than its partition (%llu): "
+                           "Windows would not mount it. Replug the drive and retry.", total, part_sectors);
+        return -1;
+      }
+    }
   }
   return 0;
 }
