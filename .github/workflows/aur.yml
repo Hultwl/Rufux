@@ -19,9 +19,21 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # secrets.* is not allowed in a job-level `if`; resolve it once here
+  # (step-level `if` permits it) and gate the real jobs on the output.
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      have_key: ${{ steps.check.outputs.have_key }}
+    steps:
+      - id: check
+        if: secrets.AUR_SSH_PRIVATE_KEY != ''
+        run: echo "have_key=true" >> "$GITHUB_OUTPUT"
+
   aur-git:
     name: "AUR: rufux-git"
-    if: github.ref == 'refs/heads/main' && secrets.AUR_SSH_PRIVATE_KEY != ''
+    needs: [guard]
+    if: github.ref == 'refs/heads/main' && needs.guard.outputs.have_key == 'true'
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     steps:
@@ -63,7 +75,8 @@ jobs:
 
   aur-stable:
     name: "AUR: rufux"
-    if: github.event_name == 'release' && secrets.AUR_SSH_PRIVATE_KEY != ''
+    needs: [guard]
+    if: github.event_name == 'release' && needs.guard.outputs.have_key == 'true'
     runs-on: ubuntu-latest
     container: archlinux:base-devel
     steps:
