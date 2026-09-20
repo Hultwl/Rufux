@@ -59,6 +59,19 @@ jobs:
             --output appimage
           ls -la ./*.AppImage
 
+      - name: Smoke test the AppImage
+        # Starts the bundled Qt GUI without a display and requires it to draw
+        # its window, so a broken Qt bundle fails the release build.
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          QT_QPA_PLATFORM: offscreen
+          RUFUX_GUI_SNAPSHOT: ${{ github.workspace }}/rufux-gui.png
+        run: |
+          chmod +x ./Rufux-*.AppImage
+          ./Rufux-*.AppImage --gui
+          test -s rufux-gui.png
+          ./Rufux-*.AppImage 2>&1 | head -1
+
       - name: Attach to release
         if: github.event_name == 'release'
         env:
@@ -68,4 +81,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Rufux-AppImage
-          path: ./Rufux-*.AppImage
+          path: |
+            ./Rufux-*.AppImage
+            ./rufux-gui.png
