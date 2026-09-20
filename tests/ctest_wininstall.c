@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
     printf("ok stage\n");
   }
 
-  if (rufux_write_unattend(xml, "bypass,nro,privacy", err, sizeof err) != 0) {
+  if (rufux_write_unattend(xml, "bypass,nro,privacy,bitlocker", err, sizeof err) != 0) {
     printf("FAIL unattend: %s\n", err);
     return 1;
   }

@@ -39,10 +39,11 @@ with anything you care about, and try `--dry-run` first.
 - **Write an image** in raw mode (`dd`-style, with read-back verification)
   or in file mode (partition, format, extract the ISO, install a
   bootloader).
-- **Windows install media**, laid out like Rufus does it: an NTFS
-  partition holding the ISO contents, plus a 1 MiB UEFI:NTFS partition at
-  the end so UEFI machines can boot from NTFS. Optionally adds an
-  `autounattend.xml` that skips the Windows 11 hardware checks.
+- **Windows install media**, laid out like Rufus does it: either NTFS plus
+  a 1 MiB UEFI:NTFS partition (any image size), or one FAT32 partition
+  (Secure Boot friendly, `install.wim` split when needed). Rufus's Windows
+  options are there too: skip the hardware checks, local account,
+  regional options, no BitLocker, no data collection, and more.
 - **FreeDOS sticks** with real DOS boot records.
 - **Extras:** MD5/SHA-1/SHA-256/SHA-512 checksums, fixed VHD images,
   persistence partitions, bad-block scans, Secure Boot status.
@@ -62,22 +63,34 @@ with anything you care about, and try `--dry-run` first.
 - Not supported: ReFS, the built-in Windows ISO downloader, Windows To Go.
   [PORTING.md](PORTING.md) explains each.
 
-## If Windows Setup can't find your drives
+## When Windows Setup cannot find something
 
-A stick that boots and then shows an empty driver list usually means
-Setup can't see the storage controller, not that the stick is bad. This is
-common on laptops with Intel RST/VMD (RAID) mode. Two fixes:
+There are two different errors that both end on "Install driver to show
+hardware", and they need different fixes.
 
-1. In the firmware settings, switch the SATA/storage mode from
-   "RAID / Intel RST" to **AHCI**, install, and switch back if you need it.
-2. Or download the storage driver from your laptop maker (look for
-   "Intel Rapid Storage Technology" or "VMD" driver, F6 version), unzip it,
-   and pass the folder when writing the stick:
-   `rufux create Win11.iso /dev/sdX --mode windows --drivers ~/vmd --real --yes`,
-   or use the drivers folder in the GUI's Windows options.
+**"A media driver your computer needs is missing"** means Setup cannot see
+the USB stick itself, so it cannot find the install files.
+1. Use a plain USB-A port, ideally USB 2.0. Avoid USB-C/Thunderbolt ports,
+   hubs and adapters. Windows PE lacks drivers for some of these, and a
+   stick that boots fine can then disappear once Windows takes over.
+2. At the error, press Shift+F10, type `diskpart`, then `list disk`. Your
+   stick should be listed. (`list volume` also shows an empty card-reader
+   slot as "Removable, 0 B, No Media"; that is not your stick.)
+3. If the disk is listed but "Offline": `select disk N`, `online disk`.
+4. Write the same ISO again with the **FAT32** file system and try again.
+   If the FAT32 stick is found and the NTFS one is not, the layout was the
+   problem; if neither is found, it is the port or the USB controller.
+5. Still nothing: add the chipset/USB controller driver of your laptop
+   with `--drivers` (below), or try another stick or port.
 
-If Setup instead says it can't find the *install media* (before you pick a
-disk), send the log; that is a different problem.
+**No drives listed at "Where do you want to install Windows?"** means Setup
+cannot see the internal disk, common with Intel RST/VMD (RAID) mode.
+1. In the firmware settings switch the storage mode from "RAID / Intel
+   RST" to **AHCI**, install, and switch back if you need it.
+2. Or download the storage driver from your laptop maker ("Intel Rapid
+   Storage Technology" or "VMD", F6 version), unzip it, and pass the folder:
+   `rufux create Win11.iso /dev/sdX --mode windows --drivers ~/vmd --real --yes`
+   (or the drivers folder in the GUI's Windows options).
 
 ## Install
 
@@ -114,6 +127,10 @@ sudo rufux write image.iso /dev/sdX --real --verify --yes
 # Windows install media, with the Windows 11 checks disabled:
 sudo rufux create Win11.iso /dev/sdX --mode windows --scheme gpt \
      --wue bypass --real --yes
+
+# The same as FAT32 (install.wim is split if needed), with a local account:
+sudo rufux create Win11.iso /dev/sdX --mode windows --fs vfat \
+     --wue bypass,nro,user=Sam --real --yes
 
 rufux --gui                                  # graphical interface
 ```

@@ -1,6 +1,7 @@
 #!/bin/bash
 # Build a small ISO9660+UDF image shaped like Windows install media.
 # Contents are placeholders; only names, layout and sizes matter to Rufux.
+# FAKE_WIM=real makes install.wim a valid WIM (needed to test splitting).
 # Usage: [FAKE_EFI=file.efi] make_fake_winiso.sh OUT.iso [install_wim_mib]
 # FAKE_BOOTMGR replaces bootmgr the same way for BIOS boot tests.
 # FAKE_EFI replaces efi/boot/bootx64.efi so a firmware boot test can prove the
@@ -9,7 +10,14 @@ set -e
 out=$1; wim_mib=${2:-6}
 d=$(mktemp -d)
 mkdir -p "$d"/{sources,boot,efi/boot,efi/microsoft/boot,support}
-head -c $((wim_mib*1024*1024)) /dev/urandom > "$d/sources/install.wim"
+if [ "$FAKE_WIM" = real ] && command -v wimlib-imagex >/dev/null; then
+  # A valid WIM (uncompressed, so its size tracks the payload) for split tests.
+  iw=$(mktemp -d); for i in $(seq 1 "$wim_mib"); do head -c 1048576 /dev/urandom > "$iw/file$i.bin"; done
+  wimlib-imagex capture "$iw" "$d/sources/install.wim" "Fake Windows" --compress=none >/dev/null 2>&1
+  rm -rf "$iw"
+else
+  head -c $((wim_mib*1024*1024)) /dev/urandom > "$d/sources/install.wim"
+fi
 # boot.wim: a real two-image WIM (WinPE + Setup) with a registry hive in each,
 # so tests can check the offline registry edit. Falls back to random bytes
 # when wimlib-imagex is missing.

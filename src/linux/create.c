@@ -511,35 +511,54 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
                         char *err, unsigned long cap) {
   char m[1024], p1[160], p2[160];
   int gpt = strcmp(o->scheme, "dos");
+  // FAT32: one plain partition, no UEFI:NTFS driver, works with Secure Boot;
+  // install.wim is split when it is over 4 GiB. NTFS: data partition + UEFI:NTFS.
+  int fat = !strcmp(o->fs, "vfat") || !strcmp(o->fs, "fat32");
+  const char *fsname = fat ? "vfat" : "ntfs";
+  if (!fat && strcmp(o->fs, "ntfs")) {
+    snprintf(err, cap, "Windows media supports FAT32 (vfat) or NTFS, not '%s'", o->fs);
+    return -1;
+  }
   rufux_part1(dst, p1, sizeof p1);
   if (o->dry_run && log) {
     snprintf(m, sizeof m,
-             "steps:\n  1. partition %s %s: NTFS data partition first, 1 MiB UEFI:NTFS last\n"
-             "  2. write UEFI:NTFS image to partition 2 (raw), format partition 1 as NTFS\n"
-             "  3. mount partition 1, extract %s\n"
+             "steps:\n  1. partition %s %s: %s\n"
+             "  2. %s\n"
+             "  3. mount partition 1, extract %s%s\n"
              "  4. Windows customization (%s%s%s)\n  5. verify the copied Windows tree%s",
-             dst, gpt ? "gpt" : "dos", src, o->wue ? o->wue : "none",
-             o->drivers ? ", drivers from " : "", o->drivers ? o->drivers : "",
+             dst, gpt ? "gpt" : "dos",
+             fat ? "one FAT32 partition" : "NTFS data partition first, 1 MiB UEFI:NTFS last",
+             fat ? "format partition 1 as FAT32" : "write UEFI:NTFS image to partition 2 (raw), format partition 1 as NTFS",
+             src, fat ? " (install.wim split with wimlib if over 4 GiB)" : "",
+             o->wue ? o->wue : "none", o->drivers ? ", drivers from " : "", o->drivers ? o->drivers : "",
              gpt ? "" : "\n  (MBR table: UEFI boot only, no legacy BIOS boot code)");
     log(m, luser);
     return 0;
   }
-  if (p2_of(p1, p2, sizeof p2) != 0) {
+  {
+    RufuxWueArgs chk = {o->wue, o->drivers, o->locale, o->keyboard, o->timezone};
+    if (rufux_windows_check(&chk, err, cap) != 0) return -1;  // before touching the disk
+  }
+  if (!fat && p2_of(p1, p2, sizeof p2) != 0) {
     snprintf(err, cap, "cannot derive the UEFI:NTFS partition from '%s'", p1);
     return -1;
   }
-  RufuxPartOpts po = {.scheme = gpt ? "gpt" : "dos", .fs_main = "ntfs",
-                      .layout = "main+uefintfs",
+  RufuxPartOpts po = {.scheme = gpt ? "gpt" : "dos", .fs_main = fsname,
+                      .layout = fat ? "single" : "main+uefintfs",
                       .dry_run = 0, .allow_fixed = o->allow_fixed, .allow_file = 0, .yes = 1};
   if (rufux_partition(dst, &po, err, cap) != 0) return -1;
   stage(prog, puser, 5);
   rescan_disk(dst);
-  if (wait_node(p1, err, cap) != 0 || wait_node(p2, err, cap) != 0) return -1;
-  if (log) log("Writing UEFI:NTFS boot partition...", luser);
-  if (rufux_write_uefi_ntfs(p2, err, cap) != 0) return -1;
-  RufuxMkfsOpts main_o = {.fs = "ntfs", .label = o->label, .cluster_sectors = o->cluster_sectors,
+  if (wait_node(p1, err, cap) != 0) return -1;
+  if (!fat) {
+    if (wait_node(p2, err, cap) != 0) return -1;
+    if (log) log("Writing UEFI:NTFS boot partition...", luser);
+    if (rufux_write_uefi_ntfs(p2, err, cap) != 0) return -1;
+  }
+  RufuxMkfsOpts main_o = {.fs = fsname, .label = o->label, .cluster_sectors = o->cluster_sectors,
                           .dry_run = 0, .allow_fixed = o->allow_fixed, .allow_file = 0, .yes = 1};
-  if (log) log("Creating file system (ntfs)...", luser);
+  snprintf(m, sizeof m, "Creating file system (%s)...", fsname);
+  if (log) log(m, luser);
   if (rufux_format(p1, &main_o, err, cap) != 0) return -1;
   // Fresh signatures settle asynchronously in udev/udisks; mounting at once
   // can see stale data, so rescan and retry the mount once.
@@ -552,12 +571,19 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
   }
   int rc = 0;
   ProgMap em = {prog, puser, 10, 70};
-  if (rufux_extract_iso_progress(src, mnt, 0,
-                                 prog ? (RufuxExtractProgress)mapped : NULL, &em,
-                                 err, cap) != 0)
+  if (fat || o->split_wim_mb) {
+    if (rufux_extract_windows_split(src, mnt, o->split_wim_mb ? o->split_wim_mb : 3800,
+                                    o->split_wim_mb != 0,
+                                    prog ? (RufuxExtractProgress)mapped : NULL, &em,
+                                    log, luser, err, cap) != 0)
+      rc = -1;
+  } else if (rufux_extract_iso_progress(src, mnt, 0,
+                                        prog ? (RufuxExtractProgress)mapped : NULL, &em,
+                                        err, cap) != 0)
     rc = -1;
   if (!rc && ((o->wue && strcmp(o->wue, "none")) || (o->drivers && o->drivers[0]))) {
-    if (rufux_windows_customize(mnt, o->wue, o->drivers, log, luser, err, cap) != 0) rc = -1;
+    RufuxWueArgs wa = {o->wue, o->drivers, o->locale, o->keyboard, o->timezone};
+    if (rufux_windows_customize(mnt, &wa, log, luser, err, cap) != 0) rc = -1;
   }
   stage(prog, puser, 88);
   if (!rc) rc = verify_windows_tree(mnt, log, luser, err, cap);
@@ -583,8 +609,9 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
     rc = -1;
   }
   if (!rc && !gpt && log)
-    log("NOTE: this NTFS stick boots on UEFI machines only. Legacy BIOS boot needs the "
-        "Windows NTFS loader, which mkfs.ntfs does not write (sectors 1-15 of $Boot).", luser);
+    log(fat ? "NOTE: this FAT32 stick boots on UEFI machines. Legacy BIOS boot code is not written yet."
+            : "NOTE: this NTFS stick boots on UEFI machines only. Legacy BIOS boot needs the "
+              "Windows NTFS loader, which mkfs.ntfs does not write (sectors 1-15 of $Boot).", luser);
   if (!rc) stage(prog, puser, 100);
   return rc;
 }

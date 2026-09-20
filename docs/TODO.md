@@ -51,6 +51,12 @@ USB stick and a Windows ISO for boot testing.
 
 ## Windows customization
 
-Not done yet from Rufus's list: local account creation, copying the host's
-locale, disabling BitLocker auto-encryption, "skip disk selection" silent
-install, and the 2023 boot loaders option.
+Not done yet from Rufus's list: "skip disk selection" silent install, S mode,
+the 2023 boot loaders option, SkuSiPolicy, and Windows To Go.
+
+## FAT32 Windows media
+
+The layout, format and mount are exercised on real systems only (the test
+sandbox kernel has no vfat driver; the splitter is tested on NTFS). Legacy
+BIOS boot code for FAT32 is not written yet: it needs the Windows FAT32
+boot record, testable in QEMU with mtools.

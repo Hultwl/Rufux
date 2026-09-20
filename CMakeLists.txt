@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Rufux VERSION 1.4.1 LANGUAGES C CXX)
+project(Rufux VERSION 1.5.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -126,3 +126,5 @@ add_test(NAME wue COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_wue.sh $<TARGET_FI
 set_tests_properties(wue PROPERTIES SKIP_RETURN_CODE 77)
 add_test(NAME zero_size COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_zero_size.sh $<TARGET_FILE:rufux>)
 set_tests_properties(zero_size PROPERTIES SKIP_RETURN_CODE 77)
+add_test(NAME fat_split COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_fat_split.sh $<TARGET_FILE:rufux>)
+set_tests_properties(fat_split PROPERTIES SKIP_RETURN_CODE 77)

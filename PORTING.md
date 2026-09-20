@@ -42,6 +42,9 @@ details matter for Windows Setup:
 - The small partition is typed as basic data, not "EFI System". Rufus
   documents that Setup fails when a disk has two ESPs.
 
+Windows media can also be a single FAT32 partition. `install.wim` over 4 GiB is
+split with `wimlib-imagex split` into `install.swm` parts (3800 MiB by default).
+
 Windows User Experience follows Rufus's `wue.c`: the Secure Boot/TPM/RAM
 bypass is written into the SYSTEM hive of `boot.wim` (with `wimlib-imagex`
 and `hivexsh`), and only if that fails is an answer file with a `windowsPE`

@@ -1,5 +1,42 @@
 # Changelog
 
+## 1.5.0 (FAT32 Windows media, Rufus's Windows options, new window)
+
+- **Windows media on FAT32.** Pick FAT32 for a Windows image and Rufux makes
+  one plain FAT32 partition (no UEFI:NTFS driver, works with Secure Boot).
+  An `install.wim` over 4 GiB is split into `install.swm`, `install2.swm`,
+  ... with wimlib, which Setup reads natively. `--fs vfat` on the command
+  line, `--split-wim MB` to force a split size. NTFS stays the default.
+  This is also a quick test when Windows Setup cannot see a stick: if the
+  FAT32 version is found and the NTFS one is not, the layout is the cause.
+- **The Windows options are now the ones Rufus has**, in the same dialog:
+  create a local account (name prefilled, empty password that must be
+  changed at first logon), copy this computer's regional options (language,
+  keyboard, time zone), disable BitLocker automatic encryption, disable
+  data collection, and a set of "Windows 11 annoyances" switches (Copilot,
+  ads, news, classic context menu, Fast Startup). CLI:
+  `--wue bypass,nro,privacy,bitlocker,locale,qol,user=NAME`, with
+  `--locale`, `--keyboard`, `--timezone`. Options are checked before the
+  drive is touched, so a bad account name fails in a second.
+- The choices you make in that dialog are remembered.
+- **New window details:** modern drop-down lists and check boxes, a
+  Settings window (light/dark/system, eject offer), drag and drop of an
+  image onto the window, `rufux --gui image.iso`, a compare field in the
+  checksum window (paste the published hash: match or not), an "Eject
+  drive" button when the write is done, and the full log inside the error
+  dialog under "Show Details". A note under the file system explains
+  FAT32 versus NTFS for Windows images.
+- After a Windows write, the finish dialog says what to try when Setup
+  reports a missing media driver (USB-A/USB 2.0 port, `diskpart`,
+  `list disk`). README section rewritten to tell the two Setup errors
+  apart: "a media driver is missing" (Setup cannot see the stick) and
+  "no drives found" (it cannot see the internal disk).
+- Changed: `--wue privacy` no longer also disables BitLocker; use the new
+  `bitlocker` item (as in Rufus). `--wue all` includes both.
+- Tests: `test_wue.sh` covers the new options; `test_fat_split.sh` covers
+  the WIM splitting with a real WIM. The FAT32 layout and mount are not
+  covered here because the CI sandbox kernel has no vfat driver.
+
 ## 1.4.1 (device list fix, modern look)
 
 - Fixed: a 16 GB stick could show up as `0.00B` and the write then failed

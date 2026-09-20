@@ -19,7 +19,7 @@ fail=0; bad() { echo "FAIL $*"; fail=1; }
 
 burn() {  # burn ARGS...   (fresh 1 GiB disk each time)
   rm -f /dev/loop0p* 2>/dev/null; losetup -D 2>/dev/null
-  truncate -s 1G $T/d.img; L=$(losetup -f --show -P $T/d.img)
+  rm -f $T/d.img; truncate -s 1G $T/d.img; L=$(losetup -f --show -P $T/d.img)
   "$R" create $T/w.iso $L --mode windows --scheme gpt --label WUETEST --real --yes --allow-fixed "$@" >$T/log 2>&1
 }
 hive_val() {  # hive_val WIM INDEX  -> LabConfig BypassTPMCheck value or empty
@@ -68,6 +68,29 @@ else bad "burn (nro)"; fi
 # 4. --drivers must be a folder that really holds drivers
 mkdir -p $T/empty
 burn --wue none --drivers $T/empty && bad "empty drivers folder accepted"
+[ -z "$(sfdisk -d ${L} 2>/dev/null | grep "^${L}p")" ] || bad "disk was partitioned before the drivers error"
 grep -q "no .inf driver files" $T/log || bad "no clear error for an empty drivers folder"
 echo "ok drivers-validation"
+# 5. local account, regional options, BitLocker, QoL: contents and well-formedness
+if burn --wue bypass,nro,privacy,bitlocker,qol,locale,user=Hus:sein --locale ar-EG --keyboard 0401:00000401 --timezone Africa/Cairo; then
+  mount -t ntfs-3g ${L}p1 $T/m || bad "cannot mount (options)"
+  P=$T/m/sources/'$OEM$'/'$$'/Panther/unattend.xml
+  python3 -c "import sys,xml.dom.minidom as m; m.parse(sys.argv[1])" "$P" 2>/dev/null || bad "unattend.xml is not well-formed XML"
+  grep -q '<Name>Hus_sein</Name>' "$P" || bad "local account name missing or not sanitised"
+  grep -q '<PlainText>false</PlainText>' "$P" || bad "account password block missing"
+  grep -q 'net user "Hus_sein" /logonpasswordchg:yes' "$P" || bad "first-logon password change missing"
+  grep -q '<TimeZone>Egypt Standard Time</TimeZone>' "$P" || bad "time zone not mapped"
+  grep -q '<InputLocale>0401:00000401</InputLocale>' "$P" || bad "keyboard layout missing"
+  grep -q '<UILanguage>ar-EG</UILanguage>' "$P" || bad "language missing"
+  grep -q 'PreventDeviceEncryption' "$P" || bad "BitLocker option missing"
+  grep -q 'HiberbootEnabled' "$P" || bad "QoL commands missing"
+  grep -q 'pass="windowsPE"' "$P" && bad "windowsPE pass present although bypass went into boot.wim"
+  umount $T/m; echo "ok options"
+else bad "burn (options)"; tail -3 $T/log; fi
+
+# 6. reserved and empty account names are refused before anything is written
+burn --wue user=Administrator && bad "reserved account name accepted"
+[ -z "$(sfdisk -d ${L} 2>/dev/null | grep "^${L}p")" ] || bad "disk was partitioned before the option error"
+grep -q "not allowed as a local account name" $T/log || bad "no clear error for a reserved name"
+echo "ok user-validation"
 exit $fail
