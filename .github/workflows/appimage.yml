@@ -22,7 +22,7 @@ jobs:
             qt6-base-dev qt6-wayland libudev-dev libblkid-dev libssl-dev gettext curl \
             util-linux dosfstools exfatprogs e2fsprogs mtools ntfs-3g \
             syslinux libarchive-tools p7zip-full xorriso udisks2 \
-            wimtools libhivex-bin gawk genisoimage python3
+            wimtools libhivex-bin gawk genisoimage python3 xvfb
 
       - name: Configure and build
         run: |
@@ -60,15 +60,15 @@ jobs:
           ls -la ./*.AppImage
 
       - name: Smoke test the AppImage
-        # Starts the bundled Qt GUI without a display and requires it to draw
-        # its window, so a broken Qt bundle fails the release build.
+        # Starts the bundled Qt GUI on a virtual X server (the xcb plugin real
+        # users get) and requires it to draw its window, so a broken Qt bundle
+        # fails the release build instead of shipping.
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
-          QT_QPA_PLATFORM: offscreen
           RUFUX_GUI_SNAPSHOT: ${{ github.workspace }}/rufux-gui.png
         run: |
           chmod +x ./Rufux-*.AppImage
-          ./Rufux-*.AppImage --gui
+          xvfb-run -a ./Rufux-*.AppImage --gui
           test -s rufux-gui.png
           ./Rufux-*.AppImage 2>&1 | head -1
 
