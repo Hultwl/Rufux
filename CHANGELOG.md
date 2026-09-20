@@ -42,10 +42,8 @@
   root process (`pkexec rufux create ... --real --yes`).
 - CMake picks Qt6 first, then GTK4, then builds CLI-only. Force one with
   `-DRUFUX_GUI=qt|gtk|none`. The GTK code is still in the tree.
-- Package dependencies moved from gtk4 to qt6-base. The CI/AppImage
-  workflow changes (qt6-base-dev, linuxdeploy-plugin-qt) are in
-  docs/ci-qt.patch; apply with `git apply docs/ci-qt.patch`. They have
-  not been run yet.
+- Package dependencies, CI and the AppImage workflow moved from gtk4 to
+  qt6-base (linuxdeploy-plugin-qt).
 - `RUFUX_GUI_SNAPSHOT=out.png rufux --gui` saves a screenshot and exits
   (`RUFUX_GUI_IMAGE=file.iso` loads an image first); handy for tests.
 
