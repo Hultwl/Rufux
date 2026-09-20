@@ -30,9 +30,10 @@ Rufux is a Linux port of [Rufus](https://github.com/pbatard/rufus). It
 burns ISOs to USB sticks, and unlike `dd` it can also partition, format,
 extract, verify, and build Windows install media.
 
-The graphical interface is built with Qt6. Most of the code was written with an AI assistant and then tested on real
-sticks. It is young software: read the limits below before trusting it
-with anything you care about, and try `--dry-run` first.
+The interface is Qt6. Most of the code was written with the help of an AI
+assistant and then tested on real sticks. It is young software: read the
+limits below before trusting it with anything you care about, and try
+`--dry-run` first.
 
 ## What it does
 
@@ -56,10 +57,12 @@ with anything you care about, and try `--dry-run` first.
 - Windows sticks made in file mode boot on **UEFI** machines only. Legacy
   BIOS boot from NTFS needs a Windows-written boot loader that Linux
   formatting tools don't produce.
-- If Windows Setup says a media driver is missing, please open an issue
-  with the log. Version 1.2.7 changed the stick layout to match Rufus
-  because of that error, but it could not be tested against a real
-  Windows install.
+- The NTFS path was reworked in 1.6.0 after Windows Setup reported a
+  missing media driver: the volume was being written without disk
+  geometry, and old filesystem signatures survived repartitioning. The
+  fixes are verified against the formatting tools, not against a real
+  Windows install. If Setup still cannot find the drive, open an issue
+  with the log.
 - Not supported: ReFS, the built-in Windows ISO downloader, Windows To Go.
   [PORTING.md](PORTING.md) explains each.
 
@@ -109,12 +112,14 @@ ctest --test-dir build
 sudo cmake --install build
 ```
 
-The host needs `dosfstools`, `ntfs-3g`/`ntfsprogs`, `exfatprogs`,
-`e2fsprogs`, `util-linux`, `syslinux`, `udisks2`, and `p7zip` or
-`libarchive`. For the Windows 11 checks bypass without an
-answer file, also `wimlib` (wimlib-imagex) and `hivex`. See [packaging/README.md](packaging/README.md) for the full
-list per distribution. Some tests skip themselves when a tool or root
-access is missing, and the DOS boot-record test needs `gawk`.
+Building needs Qt6 Widgets; without it you get a command-line-only binary.
+At runtime the host needs `dosfstools`, `ntfs-3g`/`ntfsprogs`,
+`exfatprogs`, `e2fsprogs`, `util-linux`, `syslinux`, `udisks2`, and
+`p7zip` or `libarchive`. Splitting a large `install.wim` for FAT32 needs
+`wimlib` (wimlib-imagex), and the Windows 11 checks bypass also needs
+`hivex`. [packaging/README.md](packaging/README.md) has the full list per
+distribution. Some tests skip themselves when a tool or root access is
+missing, and the DOS boot-record test needs `gawk`.
 
 ## Usage
 
@@ -145,7 +150,8 @@ installing.
 - [docs/TODO.md](docs/TODO.md): known problems and planned work
 - [tests/HW_MATRIX.md](tests/HW_MATRIX.md): hardware test checklist
 
-Bug reports with the log attached help most (the GUI has a Save button).
+Bug reports with the log attached help most: press Log in the window and
+then Save log.
 
 ## Origin and license
 

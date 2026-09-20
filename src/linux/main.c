@@ -1,4 +1,4 @@
-// Rufux entry — Phase 3 stable CLI. No windows.h by design.
+// Rufux entry point: argument parsing and command dispatch. No windows.h.
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -23,7 +23,7 @@
 #include "linux/exec.h"
 #include "linux/i18n.h"
 #include "linux/create.h"
-#include "gui/gui_gtk.h"
+#include "gui/gui.h"
 
 #ifndef RUFUX_VERSION
 #define RUFUX_VERSION "1.0.0"
@@ -368,7 +368,7 @@ int main(int argc, char **argv) {
     if (!strcmp(latest, RUFUX_VERSION))
       printf("rufux %s is up to date\n", RUFUX_VERSION);
     else
-      printf("rufux %s installed, latest is %s — see https://github.com/Hultwl/Rufux/releases\n",
+      printf("rufux %s installed, latest is %s. See https://github.com/Hultwl/Rufux/releases\n",
              RUFUX_VERSION, latest);
     return 0;
   }

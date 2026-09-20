@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.6 (NTFS Windows media fixes)
+## 1.6.0 (NTFS Windows media fixes)
 
 NTFS sticks booted but Windows Setup stopped with "a media driver your
 computer needs is missing", and the install volume showed up as 0 bytes in
@@ -30,6 +30,30 @@ diskpart. Four things in the NTFS path contributed:
 - **The NTFS dirty flag is cleared** with `ntfsfix -d` after unmounting, so
   Windows treats the stick as installation media rather than as a volume
   awaiting repair.
+
+The window was rebuilt and a few older annoyances went with it:
+
+- **The interface follows Rufus's layout.** Captions sit above their
+  controls, partition scheme and target system share a row, as do file
+  system and cluster size, and the status is drawn inside the progress
+  bar. The hand-drawn check boxes, drop-down arrows and the large custom
+  stylesheet are gone: the window is plain Qt widgets and follows the
+  desktop theme.
+- **The log is part of the window.** Press Log to open a panel under the
+  buttons, with Save and Clear. It used to be a separate dialog that had
+  to be kept out of the way.
+- **Dark mode works in the AppImage.** The system theme was read after the
+  widget style had been replaced, which reset the palette to a light one,
+  so the answer was always "light". It is now read first, from the Qt
+  style hint, then the desktop portal, then gsettings, and a change made
+  while Rufux is running is picked up.
+- **Splitting install.wim no longer needs scratch space.** For FAT32 media
+  the image is loop-mounted and wimlib reads `install.wim` where it lies,
+  instead of copying 6.6 GiB to `/tmp` first. The copy is still used for
+  images that will not mount, and it now also considers the directory the
+  image itself is in.
+- **The GTK4 window was removed.** Qt6 is the only interface; without it
+  the build is command-line only.
 
 ## 1.5.0 (FAT32 Windows media, Rufus's Windows options, new window)
 

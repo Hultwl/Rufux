@@ -3,7 +3,7 @@
 Rufux is based on [pbatard/rufus](https://github.com/pbatard/rufus) at
 commit `2ea79910`. Rufus is about 46,000 lines of Windows-only C. The
 upstream sources are kept in the tree for reference and are not compiled.
-The Linux code lives in `src/linux/` (core) and `src/gui/` (Qt6 interface, GTK4 kept as a fallback).
+The Linux code lives in `src/linux/` (core) and `src/gui/` (Qt6 interface).
 Nothing we build includes `windows.h`.
 
 ## Reused from upstream
@@ -23,7 +23,7 @@ system call instead.
 | Formatting (VDS, `FormatEx`) | `mkfs.vfat`, `mkfs.ntfs`, `mkfs.exfat`, `mkfs.ext4`, `mkudffs` |
 | Partitioning (`IOCTL_DISK_*`) | `sfdisk` scripts |
 | Raw disk I/O | `open()` with `O_EXCL`, `flock`, `fsync`, `BLKRRPART` |
-| Dialogs | Qt6 (GTK4 fallback) |
+| Dialogs | Qt6 |
 | Privileges | root check, `pkexec` from the GUI |
 | Mounting | `udisksctl` |
 | Downloads | `curl` for update checks |

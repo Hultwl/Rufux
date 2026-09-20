@@ -12,6 +12,8 @@
 #include <sys/wait.h>
 #include <errno.h>
 #include <sys/statvfs.h>
+#include <dirent.h>
+#include <strings.h>
 
 // Directory content size in bytes (extraction progress polling).
 // Pure libc via nftw: no du subprocess, no shell.
@@ -183,9 +185,17 @@ static void split_cb(unsigned long long done, unsigned long long total, void *u)
   if (m->prog) m->prog(m->base + done, m->grand, m->user);
 }
 
-// A directory with room for `need` bytes: RUFUX_TMPDIR, TMPDIR, /var/tmp, /tmp.
-static int scratch_dir(unsigned long long need, char *out, size_t cap) {
-  const char *cand[] = {getenv("RUFUX_TMPDIR"), getenv("TMPDIR"), "/var/tmp", "/tmp", NULL};
+// A directory with room for `need` bytes: RUFUX_TMPDIR, TMPDIR, the
+// directory the image itself lives in (usually a roomy disk), /var/tmp, /tmp.
+static int scratch_dir(unsigned long long need, const char *src, char *out, size_t cap) {
+  char srcdir[512] = {0};
+  if (src) {
+    snprintf(srcdir, sizeof srcdir, "%s", src);
+    char *slash = strrchr(srcdir, '/');
+    if (slash && slash != srcdir) *slash = 0; else srcdir[0] = 0;
+  }
+  const char *cand[] = {getenv("RUFUX_TMPDIR"), getenv("TMPDIR"),
+                        srcdir[0] ? srcdir : NULL, "/var/tmp", "/tmp", NULL};
   for (int i = 0; cand[i]; i++) {
     if (!cand[i][0]) continue;
     struct statvfs vs;
@@ -196,6 +206,47 @@ static int scratch_dir(unsigned long long need, char *out, size_t cap) {
     if (mkdtemp(out)) return 0;
   }
   return -1;
+}
+
+// Loop-mount the image read-only. wimlib can then read install.wim in place,
+// which is what makes the scratch copy unnecessary.
+static int iso_mount_ro(const char *iso, char *mnt, size_t cap) {
+  snprintf(mnt, cap, "/tmp/rufux-iso-XXXXXX");
+  if (!mkdtemp(mnt)) return -1;
+  const char *av[] = {"mount", "-o", "loop,ro", "--", iso, mnt, NULL};
+  if (rufux_run(av, 0) != 0) { rmdir(mnt); return -1; }
+  return 0;
+}
+
+static void iso_umount(const char *mnt) {
+  const char *av[] = {"umount", "--", mnt, NULL};
+  rufux_run(av, 0);
+  rmdir(mnt);
+}
+
+// Windows images carry the same tree twice, once per descriptor, and the two
+// disagree on case, so resolve each component by comparing names ignoring it.
+static int resolve_ci(const char *root, const char *rel, char *out, size_t cap) {
+  char cur[1024];
+  snprintf(cur, sizeof cur, "%s", root);
+  char rest[256];
+  snprintf(rest, sizeof rest, "%s", rel);
+  char *save = NULL;
+  for (char *seg = strtok_r(rest, "/", &save); seg; seg = strtok_r(NULL, "/", &save)) {
+    DIR *d = opendir(cur);
+    if (!d) return -1;
+    struct dirent *e;
+    char hit[256] = {0};
+    while ((e = readdir(d)) != NULL)
+      if (!strcasecmp(e->d_name, seg)) { snprintf(hit, sizeof hit, "%s", e->d_name); break; }
+    closedir(d);
+    if (!hit[0]) return -1;
+    size_t L = strlen(cur);
+    snprintf(cur + L, sizeof cur - L, "/%s", hit);
+  }
+  if (access(cur, R_OK) != 0) return -1;
+  snprintf(out, cap, "%s", cur);
+  return 0;
 }
 
 int rufux_extract_windows_split(const char *src, const char *dest_dir, unsigned split_mb, int force,
@@ -241,36 +292,56 @@ int rufux_extract_windows_split(const char *src, const char *dest_dir, unsigned 
   unsigned long long got = 0;
   if (extract_poll(xa, dest_dir, total > wim ? total - wim : 0, split_cb, &ma, &got, err, cap) != 0) return -1;
 
-  // Phase B: the WIM to scratch space, then split it onto the stick.
-  char scratch[512];
-  if (scratch_dir(wim + (256ULL << 20), scratch, sizeof scratch) != 0) {
-    snprintf(err, cap,
-             "no scratch space: %.1f GiB free needed in /var/tmp or /tmp (set RUFUX_TMPDIR to a bigger disk)",
-             (wim + (256ULL << 20)) / 1073741824.0);
+  // Phase B: split the WIM onto the stick.
+  //
+  // Preferred route: loop-mount the image read-only and let wimlib read
+  // install.wim where it lies. Extracting it to scratch first needed as much
+  // free space as the WIM (6.6 GiB for a Windows 11 image), which is why this
+  // step used to fail on machines with a small /tmp or /var/tmp.
+  char sdir[1300], wimfile[1300], part[1400], mb_s[16];
+  snprintf(sdir, sizeof sdir, "%s/sources", dest_dir);
+  if (mkdir(sdir, 0755) != 0 && errno != EEXIST) {
+    snprintf(err, cap, "cannot mkdir '%s': %s", sdir, strerror(errno));
     return -1;
   }
-  int rc = 0;
-  SplitMap mb = {prog, user, total > wim ? total - wim : 0, total};
-  char so[1300];
-  snprintf(so, sizeof so, "-o%s", scratch);
-  const char *xb[] = {"7z", "e", src, "-y", so, "sources/install.wim", NULL};
-  if (extract_poll(xb, scratch, wim, split_cb, &mb, &got, err, cap) != 0) rc = -1;
-  if (!rc) {
-    char sdir[1300], wimfile[1300], part[1400], mb_s[16];
-    snprintf(sdir, sizeof sdir, "%s/sources", dest_dir);
-    if (mkdir(sdir, 0755) != 0 && errno != EEXIST) {
-      snprintf(err, cap, "cannot mkdir '%s': %s", sdir, strerror(errno));
-      rc = -1;
-    } else {
-      snprintf(wimfile, sizeof wimfile, "%s/install.wim", scratch);
-      snprintf(part, sizeof part, "%s/install.swm", sdir);
-      snprintf(mb_s, sizeof mb_s, "%u", split_mb);
+  snprintf(part, sizeof part, "%s/install.swm", sdir);
+  snprintf(mb_s, sizeof mb_s, "%u", split_mb);
+
+  int rc = -1;
+  char isomnt[256] = {0};
+  if (iso_mount_ro(src, isomnt, sizeof isomnt) == 0) {
+    if (resolve_ci(isomnt, "sources/install.wim", wimfile, sizeof wimfile) == 0) {
+      if (log) log("Splitting install.wim directly from the mounted image.", log_user);
       const char *sp[] = {"wimlib-imagex", "split", wimfile, part, mb_s, NULL};
-      if (rufux_run(sp, 0) != 0) { snprintf(err, cap, "wimlib-imagex split failed"); rc = -1; }
+      rc = rufux_run(sp, 0) == 0 ? 0 : -1;
+      if (rc != 0) snprintf(err, cap, "wimlib-imagex split failed");
     }
+    iso_umount(isomnt);
   }
-  const char *rm[] = {"rm", "-rf", "--", scratch, NULL};
-  rufux_run(rm, 0);
+
+  if (rc != 0) {
+    // Fallback for images that will not loop-mount: copy the WIM out first.
+    char scratch[512];
+    if (scratch_dir(wim + (256ULL << 20), src, scratch, sizeof scratch) != 0) {
+      snprintf(err, cap,
+               "cannot split install.wim: the image would not mount, and there is no scratch "
+               "space for a copy (%.1f GiB free needed; set RUFUX_TMPDIR to a bigger disk)",
+               (wim + (256ULL << 20)) / 1073741824.0);
+      return -1;
+    }
+    SplitMap mb = {prog, user, total > wim ? total - wim : 0, total};
+    char so[1300];
+    snprintf(so, sizeof so, "-o%s", scratch);
+    const char *xb[] = {"7z", "e", src, "-y", so, "sources/install.wim", NULL};
+    if (extract_poll(xb, scratch, wim, split_cb, &mb, &got, err, cap) == 0) {
+      snprintf(wimfile, sizeof wimfile, "%s/install.wim", scratch);
+      const char *sp[] = {"wimlib-imagex", "split", wimfile, part, mb_s, NULL};
+      rc = rufux_run(sp, 0) == 0 ? 0 : -1;
+      if (rc != 0) snprintf(err, cap, "wimlib-imagex split failed");
+    }
+    const char *rm[] = {"rm", "-rf", "--", scratch, NULL};
+    rufux_run(rm, 0);
+  }
   if (!rc && prog) prog(total, total, user);
   return rc;
 }

@@ -33,19 +33,18 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
-#include <QPainter>
 #include <QPalette>
-#include <QPixmap>
-#include <QTemporaryDir>
 #include <QPlainTextEdit>
 #include <QProcess>
 #include <QProgressBar>
+#include <QScrollBar>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QSlider>
 #include <QStandardPaths>
 #include <QStyle>
 #include <QStyleFactory>
+#include <QStyleHints>
 #include <QTimer>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -98,21 +97,49 @@ QString humanSize(quint64 bytes) {
   return QString::number(v, 'f', (i < 2 || v >= 100) ? 0 : 1) + " " + u[i];
 }
 
-// "Drive Properties ————" style header, as in Rufus.
-QWidget *sectionHeader(const QString &text) {
-  auto *w = new QWidget;
-  auto *l = new QHBoxLayout(w);
-  l->setContentsMargins(0, 10, 0, 0);
-  l->setSpacing(10);
-  auto *t = new QLabel(text.toUpper());
+// Rufus separates its three sections with a small caption followed by a rule
+// that runs to the right edge, rather than with framed group boxes.
+QHBoxLayout *sectionHeader(const QString &text) {
+  auto *l = new QHBoxLayout;
+  l->setContentsMargins(0, 8, 0, 2);
+  l->setSpacing(8);
+  auto *t = new QLabel(text);
   t->setObjectName("section");
-  auto *line = new QFrame;
-  line->setFrameShape(QFrame::HLine);
-  line->setFrameShadow(QFrame::Plain);
-  line->setObjectName("rule");
+  auto *rule = new QFrame;
+  rule->setFrameShape(QFrame::HLine);
+  rule->setFrameShadow(QFrame::Sunken);
   l->addWidget(t);
-  l->addWidget(line, 1);
-  return w;
+  l->addWidget(rule, 1);
+  return l;
+}
+
+// Caption above the control, the way Rufus stacks them.
+QVBoxLayout *field(const QString &caption, QWidget *w) {
+  auto *l = new QVBoxLayout;
+  l->setContentsMargins(0, 0, 0, 0);
+  l->setSpacing(2);
+  l->addWidget(new QLabel(caption));
+  l->addWidget(w);
+  return l;
+}
+
+QVBoxLayout *field(const QString &caption, QLayout *row) {
+  auto *l = new QVBoxLayout;
+  l->setContentsMargins(0, 0, 0, 0);
+  l->setSpacing(2);
+  l->addWidget(new QLabel(caption));
+  l->addLayout(row);
+  return l;
+}
+
+// Two fields sharing a row, each taking half the width.
+QHBoxLayout *pair(QLayout *left, QLayout *right) {
+  auto *l = new QHBoxLayout;
+  l->setContentsMargins(0, 0, 0, 0);
+  l->setSpacing(12);
+  l->addLayout(left, 1);
+  l->addLayout(right, 1);
+  return l;
 }
 
 // Collapsible "Show advanced ..." row.
@@ -135,19 +162,13 @@ struct Advanced {
   }
 };
 
-void applyTheme(const QString &theme, QTemporaryDir &tmp);
-QTemporaryDir *gArrowDir = nullptr;
+void applyTheme(const QString &theme);
 
-// Modern drop-down list: rounded, padded items, no native frame or shadow.
+// Item views let the delegate size rows consistently; everything else about
+// the popup is left to the platform style.
 void polishCombo(QComboBox *c) {
-  c->setItemDelegate(new QStyledItemDelegate(c));  // lets QSS style the items
   c->setMaxVisibleItems(12);
-  auto *v = qobject_cast<QListView *>(c->view());
-  if (v) v->setUniformItemSizes(true);
-  QWidget *popup = c->view()->window();
-  popup->setWindowFlag(Qt::FramelessWindowHint, true);
-  popup->setWindowFlag(Qt::NoDropShadowWindowHint, true);
-  popup->setAttribute(Qt::WA_TranslucentBackground, true);
+  if (auto *v = qobject_cast<QListView *>(c->view())) v->setUniformItemSizes(true);
 }
 
 struct ProbeResult {
@@ -213,18 +234,17 @@ class MainWindow : public QWidget {
 
  private:
   // --- widgets ---
-  QFormLayout *drive = nullptr, *format = nullptr;
   QComboBox *devCombo, *bootCombo, *imageCombo, *schemeCombo, *targetCombo, *fsCombo, *clusterCombo, *passesCombo;
   QPushButton *selectBtn, *hashBtn, *startBtn, *closeBtn, *logBtn, *aboutBtn, *settingsBtn;
   QLabel *imageInfo, *fsNote;
-  QLabel *imageLabel, *persistLabel, *persistValue, *devCount;
+  QWidget *imageRow = nullptr, *persistBox = nullptr;
+  QLabel *persistValue, *devCount;
   QSlider *persist;
   QLineEdit *labelEdit;
   QCheckBox *chkFixed, *chkUefi, *chkQuick, *chkExt, *chkBad, *chkWue;
   QProgressBar *bar;
-  QLabel *statusLabel;
   QPlainTextEdit *logView = nullptr;
-  QDialog *logDialog = nullptr;
+  QWidget *logPanel = nullptr;
 
   // --- state ---
   QString isoPath;
@@ -241,50 +261,53 @@ class MainWindow : public QWidget {
   void build() {
     auto *root = new QVBoxLayout(this);
 
-    // Drive Properties
-    root->addWidget(sectionHeader(QStringLiteral("Drive Properties")));
-    drive = new QFormLayout;
-    drive->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    drive->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    // Drive Properties ------------------------------------------------------
+    root->addLayout(sectionHeader("Drive Properties"));
+
     devCombo = new QComboBox;
-    drive->addRow("Device", devCombo);
+    root->addLayout(field("Device", devCombo));
 
     bootCombo = new QComboBox;
     bootCombo->addItems({kNoIso, "Non bootable", "FreeDOS"});
     selectBtn = new QPushButton("SELECT");
+    selectBtn->setMinimumWidth(90);
     auto *bootRow = new QHBoxLayout;
+    bootRow->setSpacing(6);
     bootRow->addWidget(bootCombo, 1);
     bootRow->addWidget(selectBtn);
-    drive->addRow("Boot selection", bootRow);
+    root->addLayout(field("Boot selection", bootRow));
 
+    // These two rows appear only for an ISO, so they live in containers that
+    // can be hidden as a whole, caption included.
     imageCombo = new QComboBox;
     imageCombo->addItems({"Write in DD Image mode", "Write in ISO Image mode", "Windows installation"});
-    drive->addRow("Image option", imageCombo);
-    imageLabel = qobject_cast<QLabel *>(drive->labelForField(imageCombo));
+    imageRow = new QWidget;
+    imageRow->setLayout(field("Image option", imageCombo));
+    root->addWidget(imageRow);
 
     persist = new QSlider(Qt::Horizontal);
     persist->setRange(0, 128);  // 512 MiB steps, up to 64 GiB
     persistValue = new QLabel("Disabled");
     persistValue->setMinimumWidth(70);
-    auto *persistBox = new QWidget;
-    auto *pl = new QHBoxLayout(persistBox);
-    pl->setContentsMargins(0, 0, 0, 0);
-    pl->addWidget(persist, 1);
-    pl->addWidget(persistValue);
-    drive->addRow("Persistent partition size", persistBox);
-    persistLabel = qobject_cast<QLabel *>(drive->labelForField(persistBox));
+    persistValue->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    auto *persistRow = new QHBoxLayout;
+    persistRow->addWidget(persist, 1);
+    persistRow->addWidget(persistValue);
+    persistBox = new QWidget;
+    persistBox->setLayout(field("Persistent partition size", persistRow));
+    root->addWidget(persistBox);
 
+    // Rufus puts these two side by side, and they are linked to each other.
     schemeCombo = new QComboBox;
     schemeCombo->addItems({"GPT", "MBR"});
-    drive->addRow("Partition scheme", schemeCombo);
     targetCombo = new QComboBox;
     targetCombo->addItems({"BIOS or UEFI", "BIOS (or UEFI-CSM)", "UEFI (non CSM)"});
-    drive->addRow("Target system", targetCombo);
-    root->addLayout(drive);
+    root->addLayout(pair(field("Partition scheme", schemeCombo),
+                         field("Target system", targetCombo)));
 
     auto *advDrive = new QWidget;
     auto *adl = new QVBoxLayout(advDrive);
-    adl->setContentsMargins(18, 0, 0, 0);
+    adl->setContentsMargins(4, 2, 0, 0);
     chkFixed = new QCheckBox("List all drives, including internal disks (dangerous)");
     chkUefi = new QCheckBox("Validate the UEFI bootloader after copying");
     adl->addWidget(chkFixed);
@@ -293,29 +316,28 @@ class MainWindow : public QWidget {
     root->addWidget(adv1->toggle);
     root->addWidget(advDrive);
 
-    // Format Options
-    root->addWidget(sectionHeader(QStringLiteral("Format Options")));
-    format = new QFormLayout;
-    format->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    format->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+    // Format Options --------------------------------------------------------
+    root->addLayout(sectionHeader("Format Options"));
+
     labelEdit = new QLineEdit("RUFUX");
-    format->addRow("Volume label", labelEdit);
+    root->addLayout(field("Volume label", labelEdit));
+
     fsCombo = new QComboBox;
     fsCombo->addItems({"FAT32", "NTFS", "exFAT", "UDF", "ext4"});
-    format->addRow("File system", fsCombo);
     clusterCombo = new QComboBox;
-    clusterCombo->addItems({"Default", "4096 bytes", "8192 bytes", "16384 bytes", "32768 bytes", "65536 bytes"});
-    format->addRow("Cluster size", clusterCombo);
-    root->addLayout(format);
+    clusterCombo->addItems({"Default", "4096 bytes", "8192 bytes", "16384 bytes",
+                            "32768 bytes", "65536 bytes"});
+    root->addLayout(pair(field("File system", fsCombo),
+                         field("Cluster size", clusterCombo)));
+
     fsNote = new QLabel;
     fsNote->setObjectName("muted");
     fsNote->setWordWrap(true);
-    fsNote->setContentsMargins(0, 0, 0, 0);
     root->addWidget(fsNote);
 
     auto *advFmt = new QWidget;
     auto *afl = new QVBoxLayout(advFmt);
-    afl->setContentsMargins(18, 0, 0, 0);
+    afl->setContentsMargins(4, 2, 0, 0);
     chkQuick = new QCheckBox("Quick format");
     chkQuick->setChecked(true);
     chkExt = new QCheckBox("Create extended label and icon files");
@@ -338,29 +360,36 @@ class MainWindow : public QWidget {
     root->addWidget(adv2->toggle);
     root->addWidget(advFmt);
 
-    // Status
-    root->addWidget(sectionHeader(QStringLiteral("Status")));
-    statusLabel = new QLabel("READY");
-    statusLabel->setObjectName("status");
-    statusLabel->setProperty("state", "ready");
-    root->addWidget(statusLabel);
+    // Status ----------------------------------------------------------------
+    root->addLayout(sectionHeader("Status"));
     bar = new QProgressBar;
     bar->setRange(0, 100);
-    bar->setValue(100);
-    bar->setTextVisible(false);
+    bar->setValue(0);
+    bar->setTextVisible(true);
+    bar->setFormat("READY");
     bar->setProperty("state", "ready");
     root->addWidget(bar);
 
+    devCount = new QLabel;
+    devCount->setObjectName("muted");
+    imageInfo = new QLabel;
+    imageInfo->setObjectName("muted");
+    imageInfo->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    auto *info = new QHBoxLayout;
+    info->addWidget(devCount);
+    info->addWidget(imageInfo, 1);
+    root->addLayout(info);
+
+    // Buttons ---------------------------------------------------------------
     auto *foot = new QHBoxLayout;
     aboutBtn = new QPushButton("About");
     settingsBtn = new QPushButton("Settings");
     logBtn = new QPushButton("Log");
     hashBtn = new QPushButton("Checksums");
-    for (QPushButton *b : {aboutBtn, settingsBtn, logBtn, hashBtn}) b->setObjectName("flat");
     aboutBtn->setToolTip("About Rufux");
-    logBtn->setToolTip("Show the log");
+    logBtn->setToolTip("Show the log in this window");
     hashBtn->setToolTip("Compute MD5, SHA-1, SHA-256 and SHA-512 of the image");
-    settingsBtn->setToolTip("Theme and options");
+    settingsBtn->setToolTip("Appearance and options");
     startBtn = new QPushButton("START");
     startBtn->setObjectName("start");
     startBtn->setDefault(true);
@@ -376,36 +405,44 @@ class MainWindow : public QWidget {
     foot->addWidget(closeBtn);
     root->addLayout(foot);
 
-    devCount = new QLabel;
-    devCount->setObjectName("muted");
-    imageInfo = new QLabel;
-    imageInfo->setObjectName("muted");
-    imageInfo->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-    auto *info = new QHBoxLayout;
-    info->addWidget(devCount);
-    info->addWidget(imageInfo, 1);
-    root->addLayout(info);
+    // The log lives in the window rather than in a separate one: it is the
+    // first thing a bug report needs, so it should not be behind a dialog
+    // that has to be kept out of the way of the main window.
+    logPanel = new QWidget;
+    auto *lp = new QVBoxLayout(logPanel);
+    lp->setContentsMargins(0, 4, 0, 0);
+    lp->setSpacing(4);
+    logView = new QPlainTextEdit;
+    logView->setReadOnly(true);
+    logView->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    logView->setMinimumHeight(150);
+    logView->setPlainText(logLines.join("\n"));
+    lp->addWidget(logView);
+    auto *logFoot = new QHBoxLayout;
+    auto *saveLog = new QPushButton("Save log...");
+    auto *clearLog = new QPushButton("Clear");
+    logFoot->addStretch(1);
+    logFoot->addWidget(clearLog);
+    logFoot->addWidget(saveLog);
+    lp->addLayout(logFoot);
+    logPanel->setVisible(false);
+    root->addWidget(logPanel, 1);
+    QObject::connect(saveLog, &QPushButton::clicked, [this] { saveLogToFile(); });
+    QObject::connect(clearLog, &QPushButton::clicked, [this] {
+      logLines.clear();
+      logView->clear();
+    });
 
-    setMinimumWidth(600);
-    root->setContentsMargins(20, 12, 20, 16);
-    root->setSpacing(8);
-    drive->setVerticalSpacing(8);
-    drive->setHorizontalSpacing(14);
-    format->setVerticalSpacing(8);
-    format->setHorizontalSpacing(14);
-
-    // One label column width for both forms, so the fields line up.
-    for (QFormLayout *f : {drive, format})
-      for (int i = 0; i < f->rowCount(); i++)
-        if (QLayoutItem *it = f->itemAt(i, QFormLayout::LabelRole))
-          if (QWidget *lw = it->widget()) lw->setMinimumWidth(150);
+    setMinimumWidth(500);
+    root->setContentsMargins(14, 10, 14, 12);
+    root->setSpacing(6);
 
     // --- wiring ---
     QObject::connect(selectBtn, &QPushButton::clicked, [this] { pickImage(); });
     QObject::connect(hashBtn, &QPushButton::clicked, [this] { showChecksums(); });
     QObject::connect(startBtn, &QPushButton::clicked, [this] { onStart(); });
     QObject::connect(closeBtn, &QPushButton::clicked, [this] { close(); });
-    QObject::connect(logBtn, &QPushButton::clicked, [this] { showLog(); });
+    QObject::connect(logBtn, &QPushButton::clicked, [this] { toggleLog(); });
     QObject::connect(aboutBtn, &QPushButton::clicked, [this] { showAbout(); });
     QObject::connect(settingsBtn, &QPushButton::clicked, [this] { showSettings(); });
     for (QComboBox *c : {devCombo, bootCombo, imageCombo, schemeCombo, targetCombo, fsCombo, clusterCombo, passesCombo})
@@ -450,13 +487,11 @@ class MainWindow : public QWidget {
   }
 
   void setStatus(const QString &text) {
-    statusLabel->setText(text);
+    bar->setFormat(text);
     const char *state = text == "READY" ? "ready" : (text == "FAILED" ? "failed" : "busy");
-    for (QWidget *w : {static_cast<QWidget *>(statusLabel), static_cast<QWidget *>(bar)}) {
-      w->setProperty("state", state);
-      w->style()->unpolish(w);
-      w->style()->polish(w);
-    }
+    bar->setProperty("state", state);
+    bar->style()->unpolish(bar);
+    bar->style()->polish(bar);
   }
 
   void relabel() {
@@ -472,8 +507,8 @@ class MainWindow : public QWidget {
     const bool iso = isoMode();
     const int img = imageCombo->currentIndex();
     const bool haveIso = !isoPath.isEmpty();
-    drive->setRowVisible(imageCombo, iso && haveIso);
-    drive->setRowVisible(persist->parentWidget(), iso && haveIso && img == 1);
+    imageRow->setVisible(iso && haveIso);
+    persistBox->setVisible(iso && haveIso && img == 1);
     chkWue->setVisible(iso && haveIso && img == 2);
     const bool win = iso && haveIso && img == 2;
     fsNote->setVisible(win);
@@ -498,8 +533,6 @@ class MainWindow : public QWidget {
     startBtn->setProperty("busy", run);
     startBtn->style()->unpolish(startBtn);
     startBtn->style()->polish(startBtn);
-    (void)persistLabel;
-    (void)imageLabel;
   }
 
   // --- devices ---
@@ -668,34 +701,23 @@ class MainWindow : public QWidget {
     static const char *keys[] = {"system", "light", "dark"};
     settings.setValue("theme", keys[qBound(0, theme->currentIndex(), 2)]);
     settings.setValue("eject", eject->isChecked());
-    if (gArrowDir) applyTheme(keys[qBound(0, theme->currentIndex(), 2)], *gArrowDir);
+    applyTheme(keys[qBound(0, theme->currentIndex(), 2)]);
   }
 
   // --- log / about ---
-  void showLog() {
-    if (!logDialog) {
-      logDialog = new QDialog(this);
-      logDialog->setWindowTitle("Log");
-      auto *l = new QVBoxLayout(logDialog);
-      logView = new QPlainTextEdit;
-      logView->setReadOnly(true);
-      logView->setPlainText(logLines.join("\n"));
-      logView->setMinimumSize(600, 320);
-      l->addWidget(logView);
-      auto *bb = new QDialogButtonBox;
-      auto *save = bb->addButton("Save...", QDialogButtonBox::ActionRole);
-      bb->addButton(QDialogButtonBox::Close);
-      QObject::connect(bb, &QDialogButtonBox::rejected, logDialog, &QDialog::hide);
-      QObject::connect(save, &QPushButton::clicked, [this] {
-        const QString p = QFileDialog::getSaveFileName(this, "Save log", "rufux.log", "Text (*.log *.txt)");
-        if (p.isEmpty()) return;
-        QFile f(p);
-        if (f.open(QIODevice::WriteOnly)) f.write(logLines.join("\n").toUtf8() + "\n");
-      });
-      l->addWidget(bb);
-    }
-    logDialog->show();
-    logDialog->raise();
+  void toggleLog() {
+    const bool show = !logPanel->isVisible();
+    logPanel->setVisible(show);
+    logBtn->setText(show ? "Hide log" : "Log");
+    if (show) logView->verticalScrollBar()->setValue(logView->verticalScrollBar()->maximum());
+    QTimer::singleShot(0, this, [this] { adjustSize(); });
+  }
+
+  void saveLogToFile() {
+    const QString p = QFileDialog::getSaveFileName(this, "Save log", "rufux.log", "Text (*.log *.txt)");
+    if (p.isEmpty()) return;
+    QFile f(p);
+    if (f.open(QIODevice::WriteOnly)) f.write(logLines.join("\n").toUtf8() + "\n");
   }
 
   void showAbout() {
@@ -943,151 +965,89 @@ class MainWindow : public QWidget {
   }
 };
 
-struct Colors {
-  QColor bg, surface, border, borderHover, hover, text, muted, accent, accentHover;
-};
-
-Colors lightColors() {
-  return {"#f4f5f7", "#ffffff", "#d7dbe2", "#b8bec9", "#eceff3", "#1b1f24", "#69717e", "#2563eb", "#1d4ed8"};
-}
-Colors darkColors() {
-  return {"#1c1f24", "#262a31", "#383d46", "#4b525d", "#2f343c", "#e7e9ec", "#98a0ab", "#3b82f6", "#2f6fdc"};
-}
-
-// The combo-box arrow is drawn once into a PNG (no SVG plugin needed).
-QString makeArrow(const QColor &c, QTemporaryDir &dir) {
-  QPixmap pm(24, 24);
-  pm.fill(Qt::transparent);
-  QPainter p(&pm);
-  p.setRenderHint(QPainter::Antialiasing);
-  QPen pen(c, 2.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
-  p.setPen(pen);
-  p.drawLine(QPointF(5, 9), QPointF(12, 16));
-  p.drawLine(QPointF(12, 16), QPointF(19, 9));
-  p.end();
-  const QString path = dir.filePath("down.png");
-  pm.save(path);
-  return path;
-}
-
-// Check-box indicators drawn once into PNGs, in the theme's colours.
-void makeCheckboxes(const QColor &border, const QColor &surface, const QColor &accent, QTemporaryDir &dir) {
-  for (int checked = 0; checked < 2; checked++) {
-    QPixmap pm(36, 36);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing);
-    p.setPen(QPen(checked ? accent : border, 2.4));
-    p.setBrush(checked ? accent : surface);
-    p.drawRoundedRect(QRectF(2, 2, 32, 32), 8, 8);
-    if (checked) {
-      p.setPen(QPen(Qt::white, 3.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-      p.drawLine(QPointF(9.5, 18.5), QPointF(15.5, 24.5));
-      p.drawLine(QPointF(15.5, 24.5), QPointF(26.5, 11.5));
-    }
-    p.end();
-    pm.save(dir.filePath(checked ? "cb1.png" : "cb0.png"));
-  }
-}
-
-void applyTheme(const QString &theme, QTemporaryDir &tmp) {
-  qApp->setStyle(QStyleFactory::create("Fusion"));
-  bool dark = theme == "dark";
-  if (theme != "dark" && theme != "light")  // follow the system
-    dark = qApp->palette().color(QPalette::Window).lightness() < 128;
-  const Colors c = dark ? darkColors() : lightColors();
-
+// Fusion's stock palette is light only, so dark mode needs its own.
+QPalette lightPalette() {
   QPalette p;
-  p.setColor(QPalette::Window, c.bg);
-  p.setColor(QPalette::WindowText, c.text);
-  p.setColor(QPalette::Base, c.surface);
-  p.setColor(QPalette::AlternateBase, c.bg);
-  p.setColor(QPalette::Text, c.text);
-  p.setColor(QPalette::Button, c.surface);
-  p.setColor(QPalette::ButtonText, c.text);
-  p.setColor(QPalette::Highlight, c.accent);
+  p.setColor(QPalette::Window, QColor("#f0f0f0"));
+  p.setColor(QPalette::WindowText, QColor("#1b1b1b"));
+  p.setColor(QPalette::Base, Qt::white);
+  p.setColor(QPalette::AlternateBase, QColor("#f7f7f7"));
+  p.setColor(QPalette::Text, QColor("#1b1b1b"));
+  p.setColor(QPalette::Button, QColor("#e9e9e9"));
+  p.setColor(QPalette::ButtonText, QColor("#1b1b1b"));
+  p.setColor(QPalette::Mid, QColor("#6b6b6b"));
+  p.setColor(QPalette::Highlight, QColor("#2a6fd6"));
   p.setColor(QPalette::HighlightedText, Qt::white);
-  p.setColor(QPalette::ToolTipBase, c.surface);
-  p.setColor(QPalette::ToolTipText, c.text);
-  p.setColor(QPalette::PlaceholderText, c.muted);
-  p.setColor(QPalette::Link, c.accent);
-  p.setColor(QPalette::Disabled, QPalette::Text, c.muted);
-  p.setColor(QPalette::Disabled, QPalette::ButtonText, c.muted);
-  p.setColor(QPalette::Disabled, QPalette::WindowText, c.muted);
-  qApp->setPalette(p);
+  p.setColor(QPalette::Link, QColor("#2a6fd6"));
+  return p;
+}
 
-  const QString arrow = makeArrow(c.muted, tmp);
-  makeCheckboxes(c.borderHover, c.surface, c.accent, tmp);
-  auto n = [](const QColor &q) { return q.name(); };
-  QString qss = QString(R"(
-    * { font-size: 10.5pt; }
-    QLabel#section { color: %muted; font-size: 8.5pt; font-weight: 600; }
-    QFrame#rule { color: %border; background: %border; max-height: 1px; border: none; }
-    QLabel#muted { color: %muted; font-size: 9pt; }
-    QLabel#status { font-weight: 600; }
-    QLabel#status[state="ready"] { color: #16a34a; }
-    QLabel#status[state="busy"] { color: %accent; }
-    QLabel#status[state="failed"] { color: #dc2626; }
-    QCheckBox { spacing: 8px; }
-    QCheckBox::indicator { width: 18px; height: 18px; }
-    QCheckBox::indicator:unchecked { image: url(%tmp/cb0.png); }
-    QCheckBox::indicator:checked { image: url(%tmp/cb1.png); }
-    QCheckBox:disabled { color: %muted; }
-    QComboBox, QLineEdit { background: %surface; border: 1px solid %border; border-radius: 6px;
-      padding: 5px 10px; min-height: 22px; selection-background-color: %accent; selection-color: white; }
-    QComboBox:hover, QLineEdit:hover { border-color: %borderHover; }
-    QComboBox:focus, QLineEdit:focus { border-color: %accent; }
-    QComboBox:disabled, QLineEdit:disabled { color: %muted; background: %bg; }
-    QComboBox::drop-down { border: none; width: 26px; }
-    QComboBox::down-arrow { image: url(%arrow); width: 12px; height: 12px; }
-    QComboBox QAbstractItemView { background: %surface; border: 1px solid %border; border-radius: 8px;
-      outline: 0; padding: 4px; selection-background-color: transparent; }
-    QComboBox QAbstractItemView::item { min-height: 30px; padding: 2px 10px; border-radius: 6px; }
-    QComboBox QAbstractItemView::item:hover { background: %hover; }
-    QComboBox QAbstractItemView::item:selected { background: %accent; color: white; }
-    QListView, QTreeView, QTableView { background: %surface; border: 1px solid %border; border-radius: 6px;
-      outline: 0; alternate-background-color: %bg; }
-    QHeaderView::section { background: %bg; color: %muted; border: none; padding: 4px 8px; }
-    QScrollBar:vertical { background: transparent; width: 10px; margin: 2px; }
-    QScrollBar::handle:vertical { background: %border; border-radius: 4px; min-height: 24px; }
-    QScrollBar::handle:vertical:hover { background: %borderHover; }
-    QScrollBar:horizontal { background: transparent; height: 10px; margin: 2px; }
-    QScrollBar::handle:horizontal { background: %border; border-radius: 4px; min-width: 24px; }
-    QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
-    QMenu { background: %surface; border: 1px solid %border; border-radius: 8px; padding: 4px; }
-    QMenu::item { padding: 6px 18px; border-radius: 6px; }
-    QMenu::item:selected { background: %accent; color: white; }
-    QDialog { background: %bg; }
-    QPushButton { background: %surface; border: 1px solid %border; border-radius: 6px;
-      padding: 6px 16px; min-height: 22px; }
-    QPushButton:hover { border-color: %borderHover; background: %hover; }
-    QPushButton:pressed { background: %border; }
-    QPushButton:disabled { color: %muted; background: %bg; }
-    QPushButton#start { background: %accent; border-color: %accent; color: white; font-weight: 600; }
-    QPushButton#start:hover { background: %accentHover; border-color: %accentHover; }
-    QPushButton#start:disabled { background: %border; border-color: %border; color: %muted; }
-    QPushButton#start[busy="true"] { background: #dc2626; border-color: #dc2626; }
-    QPushButton#flat { border: none; background: transparent; color: %muted; padding: 6px 10px; }
-    QPushButton#flat:hover { color: %text; background: %hover; }
-    QPushButton#flat:disabled { color: %border; background: transparent; }
-    QProgressBar { background: %border; border: none; border-radius: 4px; min-height: 8px; max-height: 8px; }
-    QProgressBar::chunk { background: %accent; border-radius: 4px; }
-    QProgressBar[state="ready"]::chunk { background: #16a34a; }
-    QProgressBar[state="failed"]::chunk { background: #dc2626; }
-    QToolButton { border: none; color: %muted; padding: 4px 2px; }
-    QToolButton:hover { color: %text; }
-    QPlainTextEdit { background: %surface; border: 1px solid %border; border-radius: 6px; padding: 4px; }
-    QSlider::groove:horizontal { height: 4px; background: %border; border-radius: 2px; }
-    QSlider::sub-page:horizontal { background: %accent; border-radius: 2px; }
-    QSlider::handle:horizontal { background: %accent; width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; }
-    QToolTip { background: %surface; color: %text; border: 1px solid %border; padding: 4px; }
-  )");
-  // Longest names first so %accentHover is not eaten by %accent.
-  qss.replace("%accentHover", n(c.accentHover)).replace("%borderHover", n(c.borderHover))
-     .replace("%accent", n(c.accent)).replace("%border", n(c.border)).replace("%surface", n(c.surface))
-     .replace("%muted", n(c.muted)).replace("%hover", n(c.hover)).replace("%text", n(c.text))
-     .replace("%bg", n(c.bg)).replace("%arrow", arrow).replace("%tmp", tmp.path());
-  qApp->setStyleSheet(qss);
+QPalette darkPalette() {
+  QPalette p;
+  p.setColor(QPalette::Window, QColor("#2b2b2b"));
+  p.setColor(QPalette::WindowText, QColor("#e6e6e6"));
+  p.setColor(QPalette::Base, QColor("#1f1f1f"));
+  p.setColor(QPalette::AlternateBase, QColor("#2b2b2b"));
+  p.setColor(QPalette::Text, QColor("#e6e6e6"));
+  p.setColor(QPalette::Button, QColor("#3a3a3a"));
+  p.setColor(QPalette::ButtonText, QColor("#e6e6e6"));
+  p.setColor(QPalette::Mid, QColor("#9a9a9a"));
+  p.setColor(QPalette::Highlight, QColor("#3d7fe0"));
+  p.setColor(QPalette::HighlightedText, Qt::white);
+  p.setColor(QPalette::Link, QColor("#6fa8f5"));
+  p.setColor(QPalette::Disabled, QPalette::Text, QColor("#777777"));
+  p.setColor(QPalette::Disabled, QPalette::ButtonText, QColor("#777777"));
+  p.setColor(QPalette::Disabled, QPalette::WindowText, QColor("#777777"));
+  return p;
+}
+
+// Which colour scheme the desktop is using.
+//
+// This has to be answered before the style is replaced, because installing a
+// style resets the palette to that style's own default (a light one), and the
+// old code looked at the palette afterwards: the answer was always "light".
+// Qt 6.5 exposes the desktop setting directly, but an AppImage often ships
+// without the platform theme plugin that reads it, so fall back to asking the
+// desktop portal, and then gsettings, before giving up.
+bool systemPrefersDark() {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+  switch (QGuiApplication::styleHints()->colorScheme()) {
+    case Qt::ColorScheme::Dark: return true;
+    case Qt::ColorScheme::Light: return false;
+    default: break;
+  }
+#endif
+  QProcess portal;
+  portal.start("gdbus", {"call", "--session", "--dest", "org.freedesktop.portal.Desktop",
+                         "--object-path", "/org/freedesktop/portal/desktop",
+                         "--method", "org.freedesktop.portal.Settings.Read",
+                         "org.freedesktop.appearance", "color-scheme"});
+  if (portal.waitForFinished(1500) && portal.exitCode() == 0) {
+    const QString out = QString::fromUtf8(portal.readAllStandardOutput());
+    if (out.contains("uint32 1")) return true;   // prefer dark
+    if (out.contains("uint32 2")) return false;  // prefer light
+  }
+  QProcess gs;
+  gs.start("gsettings", {"get", "org.gnome.desktop.interface", "color-scheme"});
+  if (gs.waitForFinished(1500) && gs.exitCode() == 0)
+    return QString::fromUtf8(gs.readAllStandardOutput()).contains("dark");
+  return false;
+}
+
+void applyTheme(const QString &theme) {
+  const bool dark = theme == "dark" || (theme != "light" && systemPrefersDark());
+  qApp->setStyle(QStyleFactory::create("Fusion"));
+  qApp->setPalette(dark ? darkPalette() : lightPalette());
+  // Only the three things the platform style cannot express on its own: the
+  // green/red progress bar states and the emphasised START button.
+  qApp->setStyleSheet(QString(R"(
+    QLabel#muted { color: palette(mid); }
+    QProgressBar { min-height: 22px; text-align: center; }
+    QProgressBar[state="ready"]::chunk { background: #2e7d32; }
+    QProgressBar[state="failed"]::chunk { background: #c62828; }
+    QPushButton#start { font-weight: 600; }
+    QPushButton#start[busy="true"] { color: #c62828; }
+  )"));
 }
 
 }  // namespace
@@ -1108,9 +1068,13 @@ int rufux_gui_run(int argc, char **argv) {
   int qargc = int(keep.size());
   QApplication app(qargc, keep.data());
   QApplication::setApplicationName("Rufux");
-  QTemporaryDir tmp;  // holds the generated combo-box arrow for the app lifetime
-  gArrowDir = &tmp;
-  applyTheme(theme, tmp);
+  applyTheme(theme);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+  // Follow the desktop when it switches between light and dark while we run.
+  if (theme != "light" && theme != "dark")
+    QObject::connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged,
+                     &app, [] { applyTheme(QStringLiteral("system")); });
+#endif
 
   MainWindow w;
   w.show();
