@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.6.3 (real MBR bootstrap code, not zeroed)
+
+- Compared byte-for-byte against real Rufus source (`format.c`'s `WriteMBR`).
+  Rufus always writes actual x86 bootstrap machine code into the MBR's boot
+  area (`mbr_win7.h`, `mbr_rufus.h` - real compiled bytes), and Ventoy's own
+  MBR carries its grub-based bootstrap the same way. Rufux, going through
+  `sfdisk`, always left that 440-byte region zeroed: structurally a valid
+  MBR, but not what any other tool in this space produces.
+- Two other explanations for that gap were tested directly against a loop
+  device and ruled out: a stale GPT backup header surviving an MBR rewrite,
+  and stale bootstrap code from a prior tool (e.g. Ventoy) surviving a
+  repartition. `sfdisk --wipe always --wipe-partitions always` already
+  clears both correctly.
+- Rufux now writes a real bootstrap (the standard, GPL, freely
+  redistributable `syslinux mbr.bin` - already an existing Rufux dependency)
+  over that region for every MBR/dos-scheme partition table, immediately
+  after `sfdisk` builds it. The partition table, disk signature and boot
+  signature `sfdisk` just wrote are left untouched; verified byte-for-byte
+  on a loop device. UEFI firmware never executes this region, so this
+  cannot be why an initial UEFI boot fails, but it closes a real, verified
+  structural gap between Rufux's MBR output and every other tool's.
+
 ## 1.6.2 (MBR is the default for Windows media)
 
 - On a laptop where the installer booted fine, Windows PE showed the stick as

@@ -44,6 +44,45 @@ void rufux_partition_plan(const char *dst, const RufuxPartOpts *o,
            o->layout, o->dry_run ? " [dry-run]" : "");
 }
 
+// sfdisk only ever writes the partition table and the 55AA signature; the
+// 440-byte bootstrap-code region ahead of it (offset 0) is left all zero.
+// A dos/MBR disk with zeroed boot code is a structurally valid MBR, but it
+// is not what any real MBR-writing tool produces: Rufus always embeds a
+// real x86 bootstrap there (mbr_win7.h/mbr_rufus.h - actual compiled
+// machine code) for exactly this layout, and Ventoy's own MBR carries its
+// grub-based bootstrap the same way. UEFI firmware never executes this
+// region, so it cannot be why the initial boot fails, but it is a real,
+// verified gap between what Rufux writes and what every other tool in this
+// space writes, and it costs nothing to close: dd the standard, GPL,
+// freely redistributable syslinux mbr.bin over just those 440 bytes,
+// leaving the disk signature, reserved word and partition table (which
+// sfdisk just wrote at 440-509) and the boot signature at 510-511 alone.
+static void write_mbr_bootcode(const char *dst) {
+  static const char *candidates[] = {
+    "/usr/lib/syslinux/mbr/mbr.bin",       // Debian/Ubuntu
+    "/usr/lib/syslinux/bios/mbr.bin",      // Arch
+    "/usr/share/syslinux/mbr.bin",         // Fedora/openSUSE
+    "/usr/lib/SYSLINUX/mbr.bin",
+    NULL
+  };
+  unsigned char code[440] = {0};
+  int have = 0;
+  for (int i = 0; candidates[i] && !have; i++) {
+    FILE *f = fopen(candidates[i], "rb");
+    if (!f) continue;
+    size_t n = fread(code, 1, sizeof code, f);
+    fclose(f);
+    if (n > 0) have = 1;
+  }
+  if (!have) return;  // no syslinux on this host: leave the region zeroed, as before
+  int fd = open(dst, O_WRONLY | O_CLOEXEC);
+  if (fd < 0) return;
+  ssize_t w = pwrite(fd, code, sizeof code, 0);
+  (void)w;  // best effort: a disk still boots (via UEFI) without this
+  fsync(fd);
+  close(fd);
+}
+
 int rufux_partition(const char *dst, const RufuxPartOpts *o,
                     char *err, unsigned long cap) {
   if (strcmp(o->scheme, "gpt") && strcmp(o->scheme, "dos") && strcmp(o->scheme, "mbr")) {
@@ -178,5 +217,6 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
     if (rufux_have("udevadm")) rufux_run(us, 0);
   }
   if (rc != 0) snprintf(err, cap, "sfdisk failed on '%s'", dst);
+  if (rc == 0 && !strcmp(scheme, "dos")) write_mbr_bootcode(dst);
   return rc;
 }
