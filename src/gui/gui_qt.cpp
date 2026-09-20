@@ -23,7 +23,10 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMessageBox>
+#include <QPainter>
 #include <QPalette>
+#include <QPixmap>
+#include <QTemporaryDir>
 #include <QPlainTextEdit>
 #include <QProcess>
 #include <QProgressBar>
@@ -31,6 +34,7 @@
 #include <QRegularExpression>
 #include <QSlider>
 #include <QStandardPaths>
+#include <QStyle>
 #include <QStyleFactory>
 #include <QTimer>
 #include <QToolButton>
@@ -76,20 +80,25 @@ QString sanitizeLabel(QString in, const QString &fs) {
 }
 
 QString humanSize(quint64 bytes) {
-  char buf[64];
-  rufux_human_size(bytes, buf, sizeof buf);
-  return QString::fromUtf8(buf);
+  static const char *u[] = {"B", "KB", "MB", "GB", "TB"};
+  double v = double(bytes);
+  int i = 0;
+  while (v >= 1024.0 && i < 4) { v /= 1024.0; i++; }
+  return QString::number(v, 'f', (i < 2 || v >= 100) ? 0 : 1) + " " + u[i];
 }
 
 // "Drive Properties ————" style header, as in Rufus.
 QWidget *sectionHeader(const QString &text) {
   auto *w = new QWidget;
   auto *l = new QHBoxLayout(w);
-  l->setContentsMargins(0, 6, 0, 0);
-  auto *t = new QLabel("<b>" + text + "</b>");
+  l->setContentsMargins(0, 10, 0, 0);
+  l->setSpacing(10);
+  auto *t = new QLabel(text.toUpper());
+  t->setObjectName("section");
   auto *line = new QFrame;
   line->setFrameShape(QFrame::HLine);
-  line->setFrameShadow(QFrame::Sunken);
+  line->setFrameShadow(QFrame::Plain);
+  line->setObjectName("rule");
   l->addWidget(t);
   l->addWidget(line, 1);
   return w;
@@ -158,6 +167,7 @@ class MainWindow : public QWidget {
   QLineEdit *labelEdit;
   QCheckBox *chkFixed, *chkUefi, *chkQuick, *chkExt, *chkBad, *chkWue;
   QProgressBar *bar;
+  QLabel *statusLabel;
   QPlainTextEdit *logView = nullptr;
   QDialog *logDialog = nullptr;
 
@@ -173,12 +183,11 @@ class MainWindow : public QWidget {
 
   void build() {
     auto *root = new QVBoxLayout(this);
-    root->setSpacing(6);
 
     // Drive Properties
     root->addWidget(sectionHeader(QStringLiteral("Drive Properties")));
     drive = new QFormLayout;
-    drive->setLabelAlignment(Qt::AlignLeft);
+    drive->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     drive->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     devCombo = new QComboBox;
     drive->addRow("Device", devCombo);
@@ -230,6 +239,7 @@ class MainWindow : public QWidget {
     // Format Options
     root->addWidget(sectionHeader(QStringLiteral("Format Options")));
     format = new QFormLayout;
+    format->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     format->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
     labelEdit = new QLineEdit("RUFUX");
     format->addRow("Volume label", labelEdit);
@@ -268,19 +278,22 @@ class MainWindow : public QWidget {
 
     // Status
     root->addWidget(sectionHeader(QStringLiteral("Status")));
+    statusLabel = new QLabel("READY");
+    statusLabel->setObjectName("status");
+    statusLabel->setProperty("state", "ready");
+    root->addWidget(statusLabel);
     bar = new QProgressBar;
     bar->setRange(0, 100);
     bar->setValue(100);
-    bar->setFormat("READY");
-    bar->setTextVisible(true);
-    bar->setAlignment(Qt::AlignCenter);
-    bar->setMinimumHeight(28);
+    bar->setTextVisible(false);
+    bar->setProperty("state", "ready");
     root->addWidget(bar);
 
     auto *foot = new QHBoxLayout;
     aboutBtn = new QPushButton("i");
     logBtn = new QPushButton("Log");
     hashBtn = new QPushButton("Checksums");
+    for (QPushButton *b : {aboutBtn, logBtn, hashBtn}) b->setObjectName("flat");
     aboutBtn->setToolTip("About Rufux");
     logBtn->setToolTip("Show the log");
     hashBtn->setToolTip("Compute MD5, SHA-1, SHA-256 and SHA-512 of the image");
@@ -300,20 +313,22 @@ class MainWindow : public QWidget {
     root->addLayout(foot);
 
     devCount = new QLabel;
-    devCount->setStyleSheet("color: palette(mid);");
+    devCount->setObjectName("muted");
     root->addWidget(devCount);
 
-    setStyleSheet(
-        "QProgressBar { border: 1px solid #a8a8a8; background: #e9e9e9; color: #202020; }"
-        "QProgressBar::chunk { background: #06b025; }"
-        "QPushButton#start { font-weight: bold; }");
-    setMinimumWidth(500);
+    setMinimumWidth(600);
+    root->setContentsMargins(20, 12, 20, 16);
+    root->setSpacing(8);
+    drive->setVerticalSpacing(8);
+    drive->setHorizontalSpacing(14);
+    format->setVerticalSpacing(8);
+    format->setHorizontalSpacing(14);
 
     // One label column width for both forms, so the fields line up.
     for (QFormLayout *f : {drive, format})
       for (int i = 0; i < f->rowCount(); i++)
         if (QLayoutItem *it = f->itemAt(i, QFormLayout::LabelRole))
-          if (QWidget *lw = it->widget()) lw->setMinimumWidth(170);
+          if (QWidget *lw = it->widget()) lw->setMinimumWidth(150);
 
     // --- wiring ---
     QObject::connect(selectBtn, &QPushButton::clicked, [this] { pickImage(); });
@@ -361,7 +376,15 @@ class MainWindow : public QWidget {
     if (logView) logView->appendPlainText(s);
   }
 
-  void setStatus(const QString &text) { bar->setFormat(text); }
+  void setStatus(const QString &text) {
+    statusLabel->setText(text);
+    const char *state = text == "READY" ? "ready" : (text == "FAILED" ? "failed" : "busy");
+    for (QWidget *w : {static_cast<QWidget *>(statusLabel), static_cast<QWidget *>(bar)}) {
+      w->setProperty("state", state);
+      w->style()->unpolish(w);
+      w->style()->polish(w);
+    }
+  }
 
   void relabel() {
     labelEdit->setText(sanitizeLabel(labelEdit->text(), fsKey()));
@@ -391,6 +414,9 @@ class MainWindow : public QWidget {
     hashBtn->setEnabled(!run && haveIso);
     closeBtn->setEnabled(!run);
     startBtn->setText(run ? "CANCEL" : "START");
+    startBtn->setProperty("busy", run);
+    startBtn->style()->unpolish(startBtn);
+    startBtn->style()->polish(startBtn);
     (void)persistLabel;
     (void)imageLabel;
   }
@@ -412,14 +438,19 @@ class MainWindow : public QWidget {
       QString name = QString::fromUtf8(raw[i].model).trimmed();
       if (name.isEmpty()) name = QString::fromUtf8(raw[i].vendor).trimmed();
       if (name.isEmpty()) name = "Disk";
-      QString text = QString("%1 (%2) [%3]").arg(name, QString::fromUtf8(raw[i].devnode), humanSize(raw[i].size_bytes));
+      QString text = QString("%1 (%2) [%3]").arg(name, QString::fromUtf8(raw[i].sysname), humanSize(raw[i].size_bytes));
       if (raw[i].mounted) text += " (mounted)";
       devCombo->addItem(text, QString::fromUtf8(raw[i].devnode));
     }
     int idx = devCombo->findData(keep);
     if (idx >= 0) devCombo->setCurrentIndex(idx);
     devCount->setText(n == 1 ? "1 device found" : QString::number(n) + " devices found");
-    if (n == 0) devCombo->addItem("No USB drive found");
+    if (n == 0 && qEnvironmentVariableIsSet("RUFUX_GUI_DEMO")) {  // screenshots only
+      devCombo->addItem("SanDisk Ultra (sdb) [14.9 GB]", "/dev/sdb");
+      devCount->setText("1 device found");
+    } else if (n == 0) {
+      devCombo->addItem("No USB drive found");
+    }
   }
 
   // --- image selection ---
@@ -707,34 +738,109 @@ class MainWindow : public QWidget {
   }
 };
 
-void applyTheme(const QString &theme) {
+struct Colors {
+  QColor bg, surface, border, borderHover, hover, text, muted, accent, accentHover;
+};
+
+Colors lightColors() {
+  return {"#f4f5f7", "#ffffff", "#d7dbe2", "#b8bec9", "#eceff3", "#1b1f24", "#69717e", "#2563eb", "#1d4ed8"};
+}
+Colors darkColors() {
+  return {"#1c1f24", "#262a31", "#383d46", "#4b525d", "#2f343c", "#e7e9ec", "#98a0ab", "#3b82f6", "#2f6fdc"};
+}
+
+// The combo-box arrow is drawn once into a PNG (no SVG plugin needed).
+QString makeArrow(const QColor &c, QTemporaryDir &dir) {
+  QPixmap pm(24, 24);
+  pm.fill(Qt::transparent);
+  QPainter p(&pm);
+  p.setRenderHint(QPainter::Antialiasing);
+  QPen pen(c, 2.6, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+  p.setPen(pen);
+  p.drawLine(QPointF(5, 9), QPointF(12, 16));
+  p.drawLine(QPointF(12, 16), QPointF(19, 9));
+  p.end();
+  const QString path = dir.filePath("down.png");
+  pm.save(path);
+  return path;
+}
+
+void applyTheme(const QString &theme, QTemporaryDir &tmp) {
   qApp->setStyle(QStyleFactory::create("Fusion"));
-  if (theme == "dark") {
-    QPalette p;
-    p.setColor(QPalette::Window, QColor(45, 45, 48));
-    p.setColor(QPalette::WindowText, Qt::white);
-    p.setColor(QPalette::Base, QColor(30, 30, 30));
-    p.setColor(QPalette::AlternateBase, QColor(45, 45, 48));
-    p.setColor(QPalette::Text, Qt::white);
-    p.setColor(QPalette::Button, QColor(63, 63, 70));
-    p.setColor(QPalette::ButtonText, Qt::white);
-    p.setColor(QPalette::Highlight, QColor(0, 120, 215));
-    p.setColor(QPalette::HighlightedText, Qt::white);
-    p.setColor(QPalette::ToolTipBase, QColor(63, 63, 70));
-    p.setColor(QPalette::ToolTipText, Qt::white);
-    qApp->setPalette(p);
-  } else if (theme == "light") {
-    QPalette p;
-    p.setColor(QPalette::Window, QColor(240, 240, 240));
-    p.setColor(QPalette::WindowText, Qt::black);
-    p.setColor(QPalette::Base, Qt::white);
-    p.setColor(QPalette::Text, Qt::black);
-    p.setColor(QPalette::Button, QColor(225, 225, 225));
-    p.setColor(QPalette::ButtonText, Qt::black);
-    p.setColor(QPalette::Highlight, QColor(0, 120, 215));
-    p.setColor(QPalette::HighlightedText, Qt::white);
-    qApp->setPalette(p);
-  }
+  bool dark = theme == "dark";
+  if (theme != "dark" && theme != "light")  // follow the system
+    dark = qApp->palette().color(QPalette::Window).lightness() < 128;
+  const Colors c = dark ? darkColors() : lightColors();
+
+  QPalette p;
+  p.setColor(QPalette::Window, c.bg);
+  p.setColor(QPalette::WindowText, c.text);
+  p.setColor(QPalette::Base, c.surface);
+  p.setColor(QPalette::AlternateBase, c.bg);
+  p.setColor(QPalette::Text, c.text);
+  p.setColor(QPalette::Button, c.surface);
+  p.setColor(QPalette::ButtonText, c.text);
+  p.setColor(QPalette::Highlight, c.accent);
+  p.setColor(QPalette::HighlightedText, Qt::white);
+  p.setColor(QPalette::ToolTipBase, c.surface);
+  p.setColor(QPalette::ToolTipText, c.text);
+  p.setColor(QPalette::PlaceholderText, c.muted);
+  p.setColor(QPalette::Link, c.accent);
+  p.setColor(QPalette::Disabled, QPalette::Text, c.muted);
+  p.setColor(QPalette::Disabled, QPalette::ButtonText, c.muted);
+  p.setColor(QPalette::Disabled, QPalette::WindowText, c.muted);
+  qApp->setPalette(p);
+
+  const QString arrow = makeArrow(c.muted, tmp);
+  auto n = [](const QColor &q) { return q.name(); };
+  QString qss = QString(R"(
+    * { font-size: 10.5pt; }
+    QLabel#section { color: %muted; font-size: 8.5pt; font-weight: 600; }
+    QFrame#rule { color: %border; background: %border; max-height: 1px; border: none; }
+    QLabel#muted { color: %muted; font-size: 9pt; }
+    QLabel#status { font-weight: 600; }
+    QLabel#status[state="ready"] { color: #16a34a; }
+    QLabel#status[state="busy"] { color: %accent; }
+    QLabel#status[state="failed"] { color: #dc2626; }
+    QComboBox, QLineEdit { background: %surface; border: 1px solid %border; border-radius: 6px;
+      padding: 5px 10px; min-height: 22px; selection-background-color: %accent; selection-color: white; }
+    QComboBox:hover, QLineEdit:hover { border-color: %borderHover; }
+    QComboBox:focus, QLineEdit:focus { border-color: %accent; }
+    QComboBox:disabled, QLineEdit:disabled { color: %muted; background: %bg; }
+    QComboBox::drop-down { border: none; width: 26px; }
+    QComboBox::down-arrow { image: url(%arrow); width: 12px; height: 12px; }
+    QComboBox QAbstractItemView { background: %surface; border: 1px solid %border; outline: 0;
+      selection-background-color: %accent; selection-color: white; padding: 4px; }
+    QPushButton { background: %surface; border: 1px solid %border; border-radius: 6px;
+      padding: 6px 16px; min-height: 22px; }
+    QPushButton:hover { border-color: %borderHover; background: %hover; }
+    QPushButton:pressed { background: %border; }
+    QPushButton:disabled { color: %muted; background: %bg; }
+    QPushButton#start { background: %accent; border-color: %accent; color: white; font-weight: 600; }
+    QPushButton#start:hover { background: %accentHover; border-color: %accentHover; }
+    QPushButton#start:disabled { background: %border; border-color: %border; color: %muted; }
+    QPushButton#start[busy="true"] { background: #dc2626; border-color: #dc2626; }
+    QPushButton#flat { border: none; background: transparent; color: %muted; padding: 6px 10px; }
+    QPushButton#flat:hover { color: %text; background: %hover; }
+    QPushButton#flat:disabled { color: %border; background: transparent; }
+    QProgressBar { background: %border; border: none; border-radius: 4px; min-height: 8px; max-height: 8px; }
+    QProgressBar::chunk { background: %accent; border-radius: 4px; }
+    QProgressBar[state="ready"]::chunk { background: #16a34a; }
+    QProgressBar[state="failed"]::chunk { background: #dc2626; }
+    QToolButton { border: none; color: %muted; padding: 4px 2px; }
+    QToolButton:hover { color: %text; }
+    QPlainTextEdit { background: %surface; border: 1px solid %border; border-radius: 6px; padding: 4px; }
+    QSlider::groove:horizontal { height: 4px; background: %border; border-radius: 2px; }
+    QSlider::sub-page:horizontal { background: %accent; border-radius: 2px; }
+    QSlider::handle:horizontal { background: %accent; width: 14px; height: 14px; margin: -5px 0; border-radius: 7px; }
+    QToolTip { background: %surface; color: %text; border: 1px solid %border; padding: 4px; }
+  )");
+  // Longest names first so %accentHover is not eaten by %accent.
+  qss.replace("%accentHover", n(c.accentHover)).replace("%borderHover", n(c.borderHover))
+     .replace("%accent", n(c.accent)).replace("%border", n(c.border)).replace("%surface", n(c.surface))
+     .replace("%muted", n(c.muted)).replace("%hover", n(c.hover)).replace("%text", n(c.text))
+     .replace("%bg", n(c.bg)).replace("%arrow", arrow);
+  qApp->setStyleSheet(qss);
 }
 
 }  // namespace
@@ -753,7 +859,8 @@ int rufux_gui_run(int argc, char **argv) {
   int qargc = int(keep.size());
   QApplication app(qargc, keep.data());
   QApplication::setApplicationName("Rufux");
-  applyTheme(theme);
+  QTemporaryDir tmp;  // holds the generated combo-box arrow for the app lifetime
+  applyTheme(theme, tmp);
 
   MainWindow w;
   w.show();

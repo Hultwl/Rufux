@@ -18,11 +18,23 @@ static unsigned long long target_bytes(const char *path) {
   struct stat st;
   if (stat(path, &st) != 0) return 0;
   if (S_ISREG(st.st_mode)) return (unsigned long long)st.st_size;
-  int fd = open(path, O_RDONLY | O_CLOEXEC);
-  if (fd < 0) return 0;
   unsigned long long b = 0;
-  if (ioctl(fd, BLKGETSIZE64, &b) != 0) b = 0;
-  close(fd);
+  int fd = open(path, O_RDONLY | O_CLOEXEC);
+  if (fd >= 0) {
+    if (ioctl(fd, BLKGETSIZE64, &b) != 0) b = 0;
+    close(fd);
+  }
+  if (b == 0) {
+    // sysfs keeps a sector count even where the ioctl is unavailable.
+    const char *base = strrchr(path, '/');
+    char sp[256], buf[64] = {0};
+    snprintf(sp, sizeof sp, "/sys/class/block/%s/size", base ? base + 1 : path);
+    FILE *f = fopen(sp, "r");
+    if (f) {
+      if (fgets(buf, sizeof buf, f)) b = strtoull(buf, NULL, 10) * 512ULL;
+      fclose(f);
+    }
+  }
   return b;
 }
 
@@ -85,7 +97,8 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
     unsigned long long bytes = target_bytes(dst);
     unsigned long long mib = bytes >> 20;
     if (mib < 64) {
-      snprintf(err, cap, "target '%s' is too small for a UEFI:NTFS layout", dst);
+      snprintf(err, cap, "target '%s' reports %llu MiB; the Windows layout needs at least 64 MiB "
+                         "(an empty card-reader slot reports 0)", dst, mib);
       return -1;
     }
     unsigned long long main_mib = mib - 3; // 1 leading + 1 UEFI:NTFS + 1 slack

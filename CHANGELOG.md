@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.4.1 (device list fix, modern look)
+
+- Fixed: a 16 GB stick could show up as `0.00B` and the write then failed
+  with "device too small". Linux lists every card-reader slot as a disk,
+  and an empty slot reports a capacity of 0. Those entries are now hidden
+  (Rufus does the same), and if a zero-capacity target is chosen anyway the
+  error says what it is and what to do, instead of "too small".
+- The size read used by the worker also falls back to sysfs, and its error
+  message now includes the size it saw.
+- New look for the Qt window: soft light and dark themes that follow the
+  system, rounded inputs and buttons, a slim progress bar with a separate
+  status line (green when ready, red when it fails), a quieter section
+  layout, and a red CANCEL while a write runs. Device names read like
+  `SanDisk Ultra (sdb) [14.9 GB]`.
+- `RUFUX_GUI_DEMO=1` adds a fake device to the list, for screenshots.
+- README screenshot updated.
+
 ## 1.4.0 (Windows customization rewritten like Rufus)
 
 - **Secure Boot / TPM / RAM bypass now works under the hood.** The
