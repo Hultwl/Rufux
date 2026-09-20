@@ -54,6 +54,11 @@ jobs:
           [ -n "$key" ] || key='${{ secrets.AUR }}'
           printf '%s\n' "$key" > /root/.ssh/aur
           chmod 600 /root/.ssh/aur
+          # Fail fast with a readable error instead of a cryptic ssh one.
+          ssh-keygen -y -f /root/.ssh/aur > /dev/null || {
+            echo "ERROR: the AUR secret is not a valid private key. It must contain the full private key text (-----BEGIN OPENSSH PRIVATE KEY----- ...), not the public key."
+            exit 1
+          }
           ssh-keyscan -t ed25519 aur.archlinux.org >> /root/.ssh/known_hosts
           printf 'Host aur.archlinux.org\n\tIdentityFile /root/.ssh/aur\n\tIdentitiesOnly yes\n' > /root/.ssh/config
 
@@ -110,6 +115,11 @@ jobs:
           [ -n "$key" ] || key='${{ secrets.AUR }}'
           printf '%s\n' "$key" > /root/.ssh/aur
           chmod 600 /root/.ssh/aur
+          # Fail fast with a readable error instead of a cryptic ssh one.
+          ssh-keygen -y -f /root/.ssh/aur > /dev/null || {
+            echo "ERROR: the AUR secret is not a valid private key. It must contain the full private key text (-----BEGIN OPENSSH PRIVATE KEY----- ...), not the public key."
+            exit 1
+          }
           ssh-keyscan -t ed25519 aur.archlinux.org >> /root/.ssh/known_hosts
           printf 'Host aur.archlinux.org\n\tIdentityFile /root/.ssh/aur\n\tIdentitiesOnly yes\n' > /root/.ssh/config
 
