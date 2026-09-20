@@ -83,7 +83,7 @@ The host needs `dosfstools`, `ntfs-3g`/`ntfsprogs`, `exfatprogs`,
 `e2fsprogs`, `util-linux`, `syslinux`, `udisks2`, and `p7zip` or
 `libarchive`. See [packaging/README.md](packaging/README.md) for the full
 list per distribution. Some tests skip themselves when a tool or root
-access is missing.
+access is missing, and the DOS boot-record test needs `gawk`.
 
 ## Usage
 

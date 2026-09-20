@@ -7,17 +7,13 @@
   when every file is under 4 GiB, or FAT32 plus split WIM (wimlib) for
   larger images. The FAT32 record can be tested in QEMU; this sandbox
   had no `vfat` module, so it needs a machine that does.
-- **`extract` mode puts the ISO on the wrong partition.** `flow_extract_disk`
-  in `src/linux/create.c` uses the `esp+main` layout and extracts into the
-  512 MiB first partition, leaving the second unused. Should be a single
-  data partition. Found by reading, not yet reproduced.
 - **Confirm the Windows Setup fix.** 1.2.7 changed the Windows layout to
   match Rufus. Someone with a real Windows ISO needs to burn a stick and
   confirm Setup finds `install.wim` (see the 1.2.7 changelog).
 - `install.wim` larger than 4 GiB has not been tested; the NTFS path should
   handle it.
 
-## Qt6 GUI (done on the qt-gui branch, needs a real-hardware test)
+## Qt6 GUI (in 1.3.0, needs a real-hardware test)
 
 The Qt interface exists (`src/gui/gui_qt.cpp`) and renders correctly
 offscreen. Not yet checked: a real burn started from the window, the
@@ -52,3 +48,11 @@ USB stick and a Windows ISO for boot testing.
 
 - UDisks2 D-Bus backend.
 - More translations beyond English, French and Spanish.
+
+## CI
+
+`docs/ci-qt.patch` moves the CI and AppImage workflows to Qt6. It could
+not be pushed with the token used so far (no `workflow` scope). Apply it
+with `git apply docs/ci-qt.patch`, push, and check that the AppImage
+still builds and starts. Until then the AppImage is built from the GTK
+fallback.

@@ -268,7 +268,7 @@ static int flow_extract_disk(const char *src, const char *dst, const RufuxCreate
   if (vfat_size_guard(src, o->fs, err, cap) != 0) return -1;
   if (o->dry_run && log) {
     // keep the classic step listing (also asserted by tests)
-    snprintf(m, sizeof m, "steps:\n  1. partition %s %s/esp+main (sfdisk)\n  2. format %s %s [%s]\n"
+    snprintf(m, sizeof m, "steps:\n  1. partition %s %s/single (sfdisk)\n  2. format %s %s [%s]\n"
              "  3. mount %s (udisks2) + extract %s",
              dst, o->scheme, p1, o->fs, o->label ? o->label : "", p1, src);
     log(m, luser);
@@ -281,7 +281,7 @@ static int flow_extract_disk(const char *src, const char *dst, const RufuxCreate
     return 0;
   }
 
-  RufuxPartOpts po = {.scheme = o->scheme, .layout = "esp+main", .fs_main = o->fs, .dry_run = 0,
+  RufuxPartOpts po = {.scheme = o->scheme, .layout = "single", .fs_main = o->fs, .dry_run = 0,
                       .allow_fixed = o->allow_fixed, .allow_file = 0, .yes = 1};
   if (rufux_partition(dst, &po, err, cap) != 0) return -1;
   stage(prog, puser, 4);

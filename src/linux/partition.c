@@ -55,7 +55,7 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
     return -1;
   }
   // Explicit field syntax (works across sfdisk generations):
-  // single: one Linux/UEFI-usable partition; esp+main: 512MiB ESP + rest.
+  // single: one data partition (basic data type, Linux type for ext*); esp+main: 512MiB ESP + rest.
   // ESP type GUID C12A7328-F81F-11D2-BA4B-00A0C93EC93B (was a placeholder).
   // MBR type follows the filesystem: BIOS boots FAT/NTFS partitions,
   // never type 83 (Linux). gpt layouts need no boot flag (UEFI ignores
@@ -100,9 +100,13 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
                "label: dos\nstart=1MiB, size=%lluMiB, type=%s, bootable\nsize=1MiB, type=ef\n",
                main_mib, mbr_type);
   } else if (!strcmp(o->layout, "single")) {
-    if (!strcmp(scheme, "gpt"))
-      snprintf(script, sizeof script,
-               "label: gpt\nstart=1MiB, type=0FC63DAF-8483-4772-8E79-3D69D8477DE4\n");
+    if (!strcmp(scheme, "gpt")) {
+      // Windows only mounts Microsoft basic data partitions; the Linux
+      // filesystem type is right for ext* alone.
+      const char *gtype = !strcmp(mbr_type, "83") ? "0FC63DAF-8483-4772-8E79-3D69D8477DE4"
+                                                   : "EBD0A0A2-B938-11D2-B3FA-00A0C93EC93B";
+      snprintf(script, sizeof script, "label: gpt\nstart=1MiB, type=%s\n", gtype);
+    }
     else
       snprintf(script, sizeof script, "label: dos\nstart=1MiB, type=%s, bootable\n",
                mbr_type);

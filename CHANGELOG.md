@@ -1,6 +1,16 @@
 # Changelog
 
-## Unreleased (qt-gui branch)
+## 1.3.0 (Qt6 interface, extract-mode fix)
+
+- Fixed: `extract` mode (and the "Write in ISO Image mode" option) put
+  the ISO on a 512 MiB partition and left the second one unused, so any
+  ISO over about 500 MB failed with "No space left on device". It now
+  uses one data partition. tests/test_extract_layout.sh covers it with a
+  600 MiB image and fails on the old behaviour.
+- Fixed: single-partition GPT sticks (extract and "Non bootable") were
+  typed as Linux filesystem data even for FAT32/NTFS/exFAT. Windows
+  ignores such partitions, so they got no drive letter. They are now
+  typed Microsoft basic data; only ext* keeps the Linux type.
 
 - New Qt6 interface laid out like Rufus: Drive Properties, Format
   Options and Status sections, a green progress bar, START/CLOSE, a log
