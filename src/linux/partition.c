@@ -136,7 +136,7 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
   }
 
   if (o->dry_run) {
-    fprintf(stderr, "+ sfdisk --wipe always %s <<'%s'\n", dst, script);
+    fprintf(stderr, "+ sfdisk --wipe always --wipe-partitions always %s <<'%s'\n", dst, script);
     return 0;
   }
   // write script to temp and run sfdisk < script (no shell)
@@ -146,7 +146,13 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
   size_t L = strlen(script);
   if (write(fd, script, L) != (ssize_t)L) { close(fd); unlink(tmpl); snprintf(err, cap, "tmp write failed"); return -1; }
   close(fd);
-  const char *argv[] = {"sfdisk", "--wipe", "always", dst, NULL};
+  // --wipe always clears signatures found on the *disk*; --wipe-partitions
+  // always clears the ones sitting inside each newly created partition.
+  // Without the second flag sfdisk only warns ("Partition #1 contains a vfat
+  // signature") and leaves the old FAT/NTFS superblock and its backup copies
+  // in place, so probers (and Windows) can still latch onto the stale volume.
+  const char *argv[] = {"sfdisk", "--wipe", "always",
+                        "--wipe-partitions", "always", dst, NULL};
   // redirect stdin from tmpl
   int rc = 0;
   pid_t p = fork();

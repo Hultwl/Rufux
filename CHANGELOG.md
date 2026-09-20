@@ -1,5 +1,36 @@
 # Changelog
 
+## 1.6 (NTFS Windows media fixes)
+
+NTFS sticks booted but Windows Setup stopped with "a media driver your
+computer needs is missing", and the install volume showed up as 0 bytes in
+diskpart. Four things in the NTFS path contributed:
+
+- **The NTFS volume was described with no disk geometry.** `mkfs.ntfs` only
+  fills the BPB fields it can work out for itself, and on a USB stick it
+  usually cannot: it printed *"Windows will not be able to boot from this
+  device"* and wrote zero for hidden sectors, heads and sectors-per-track.
+  Rufux now passes `-p` (partition start), `-H 255` and `-S 63` explicitly,
+  the way the Windows formatter does. `--cluster-sectors` is also passed on
+  to `mkfs.ntfs` now (`-c`); it used to be accepted and silently dropped.
+- **Old filesystem signatures survived repartitioning.** `sfdisk` ran with
+  `--wipe always`, which only covers the disk, so it would warn *"Partition
+  #1 contains a vfat signature"* and leave the previous volume's superblock
+  and its backup copies in place. It now runs with `--wipe-partitions
+  always` as well, and the first and last MiB of the Windows data partition
+  are zeroed before formatting, which is what Rufus does.
+- **An incomplete extraction could pass verification.** The completeness
+  check only complained when less than a quarter of the image had been
+  written, and the file check looked at `bootmgr` and `sources/boot.wim`
+  alone. The threshold is now three quarters, and the check covers every
+  file Setup needs to find its media (`setup.exe`, `sources/setup.exe`,
+  `boot/bcd`, `efi/microsoft/boot/bcd`, an `efi/boot/boot*.efi` loader),
+  matching names case-insensitively so the ISO9660 and UDF spellings both
+  resolve.
+- **The NTFS dirty flag is cleared** with `ntfsfix -d` after unmounting, so
+  Windows treats the stick as installation media rather than as a volume
+  awaiting repair.
+
 ## 1.5.0 (FAT32 Windows media, Rufus's Windows options, new window)
 
 - **Windows media on FAT32.** Pick FAT32 for a Windows image and Rufux makes

@@ -84,6 +84,11 @@ int rufux_extract_iso_progress(const char *src, const char *dest_dir, int dry_ru
       return -1;
     }
   }
+  // A complete extraction lands within a few percent of the image size, so
+  // anything under three quarters of it means files were dropped. The old
+  // threshold was a quarter, which let an ISO that lost most of sources/
+  // through unnoticed - the stick then booted and Windows Setup blamed a
+  // missing media driver.
   // Backend routing: UDF images go straight to 7z (bsdtar silently
   // under-extracts some UDF layouts, e.g. Win11 media). Others prefer
   // bsdtar with a 7z fallback.
@@ -98,7 +103,7 @@ int rufux_extract_iso_progress(const char *src, const char *dest_dir, int dry_ru
                       &got, err, cap);
     // bsdtar can exit 0 while under-extracting some UDF layouts: fall
     // through to 7z instead of declaring success on a partial tree.
-    if (rc != 0 || (total > (50ULL << 20) && got * 4 < total)) {
+    if (rc != 0 || (total > (50ULL << 20) && got * 4 < total * 3)) {
       if (rc == 0 && rufux_have("7z")) {
         snprintf(err, cap, "bsdtar incomplete (%llu of %llu bytes), retrying with 7z",
                  got, total);
@@ -120,7 +125,7 @@ int rufux_extract_iso_progress(const char *src, const char *dest_dir, int dry_ru
     if (dry_run) { rufux_run(av, 1); return 0; }
     rc = extract_poll(av, dest_dir, (prog && total) ? total : 0, prog, user,
                       &got, err, cap);
-    if (rc == 0 && total > (50ULL << 20) && got * 4 < total) {
+    if (rc == 0 && total > (50ULL << 20) && got * 4 < total * 3) {
       snprintf(err, cap, "extract incomplete (%llu of %llu bytes)", got, total);
       return -1;
     }

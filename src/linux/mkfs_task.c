@@ -41,8 +41,10 @@ int rufux_format(const char *dst, const RufuxMkfsOpts *o,
   const char **av = NULL;
 
   // Function-local argv buffers (reentrant; no shared static state).
-  char lab_vfat[160], lab_ntfs[160], start_ntfs[32], lab_exfat[160], lab_ext4[160], sec_vfat[32];
-  const char *a_vfat[9], *a_ntfs[9], *a_exfat[5], *a_ext4[7], *a_udf[4];
+  char lab_vfat[160], lab_ntfs[160], start_ntfs[32], clus_ntfs[32];
+  char lab_exfat[160], lab_ext4[160], sec_vfat[32];
+  // mkfs.ntfs -F -Q -p S -H 255 -S 63 [-c N] [-L label] dev NULL = 16 slots
+  const char *a_vfat[9], *a_ntfs[16], *a_exfat[5], *a_ext4[7], *a_udf[4];
   if (!strcmp(o->fs, "vfat") || !strcmp(o->fs, "fat32")) {
     if (!rufux_have("mkfs.vfat")) { snprintf(err, cap, "mkfs.vfat missing"); return -1; }
     int i = 0;
@@ -57,10 +59,21 @@ int rufux_format(const char *dst, const RufuxMkfsOpts *o,
     if (!rufux_have("mkfs.ntfs")) { snprintf(err, cap, "mkfs.ntfs missing (ntfsprogs)"); return -1; }
     int i = 0;
     a_ntfs[i++] = "mkfs.ntfs"; a_ntfs[i++] = "-F"; a_ntfs[i++] = "-Q";
+    // mkntfs only fills the BPB geometry fields it can work out for itself,
+    // and on most USB sticks HDIO_GETGEO gives it nothing: it then prints
+    // "Windows will not be able to boot from this device" and writes 0 for
+    // hidden sectors / heads / sectors-per-track. Windows is unhappy with a
+    // volume described that way, so supply all three explicitly, the way the
+    // Windows formatter does (255 heads, 63 sectors per track).
     unsigned long long st = part_start_sector(dst);
-    if (st > 0) {
-      snprintf(start_ntfs, sizeof start_ntfs, "%llu", st);
-      a_ntfs[i++] = "-p"; a_ntfs[i++] = start_ntfs;
+    snprintf(start_ntfs, sizeof start_ntfs, "%llu", st ? st : 2048ULL);
+    a_ntfs[i++] = "-p"; a_ntfs[i++] = start_ntfs;
+    a_ntfs[i++] = "-H"; a_ntfs[i++] = "255";
+    a_ntfs[i++] = "-S"; a_ntfs[i++] = "63";
+    if (o->cluster_sectors > 0) {
+      // mkntfs takes bytes, the UI carries sectors (512 bytes each).
+      snprintf(clus_ntfs, sizeof clus_ntfs, "%d", o->cluster_sectors * 512);
+      a_ntfs[i++] = "-c"; a_ntfs[i++] = clus_ntfs;  // was silently dropped
     }
     if (o->label && o->label[0]) { snprintf(lab_ntfs, sizeof lab_ntfs, "%s", o->label); a_ntfs[i++] = "-L"; a_ntfs[i++] = lab_ntfs; }
     a_ntfs[i++] = dst; a_ntfs[i] = NULL; av = a_ntfs;

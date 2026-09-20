@@ -22,6 +22,10 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <sys/ioctl.h>
+#include <dirent.h>
+#include <strings.h>
+#include <linux/fs.h>
 
 void rufux_create_defaults(RufuxCreateOpts *o) {
   memset(o, 0, sizeof *o);
@@ -185,6 +189,29 @@ static int zero_head(const char *dst, RufuxCreateLog log, void *luser,
   if (fsync(fd) != 0) { snprintf(err, cap, "fsync failed"); close(fd); return -1; }
   close(fd);
   return 0;
+}
+
+// Erase the first and last MiB of a partition before formatting it.
+// Rufus does the same (ClearPartition) and for the same reason: mkfs only
+// overwrites the sectors its own superblock occupies, so the *backup* copies
+// of whatever was there before survive (FAT32 keeps one at sector 6, NTFS one
+// in the last sector of the volume). Leftovers make probers - and Windows -
+// see a volume that no longer exists, which shows up as a 0-byte volume.
+// Best effort: a failure here is not worth aborting the run over.
+static void wipe_part_edges(const char *part) {
+  int fd = open(part, O_WRONLY | O_CLOEXEC);
+  if (fd < 0) return;
+  unsigned long long sz = 0;
+  if (ioctl(fd, BLKGETSIZE64, &sz) != 0) sz = 0;
+  static char z[1 << 20];
+  memset(z, 0, sizeof z);
+  size_t head = (sz && sz < sizeof z) ? (size_t)sz : sizeof z;
+  ssize_t w = pwrite(fd, z, head, 0);
+  (void)w;
+  if (sz > (unsigned long long)sizeof z * 2)
+    w = pwrite(fd, z, sizeof z, (off_t)(sz - sizeof z));
+  fsync(fd);
+  close(fd);
 }
 
 // dd layout: badblocks 0-10, zero 10-15, write 15-(verify?85:100), verify 85-100.
@@ -480,23 +507,65 @@ static int p2_of(const char *p1, char *p2, unsigned long cap) {
 
 // Setup finds its media by looking for these files; a stick that lacks any
 // of them boots fine and then dies with "a media driver is missing".
+// Windows ISOs carry the same tree in both an ISO9660 and a UDF descriptor,
+// and the two disagree on case, so every lookup below walks the tree
+// comparing names case-insensitively rather than trusting one spelling.
+// Returns the file size, or -1 when the path does not resolve.
+static long long find_ci(const char *root, const char *relpath) {
+  char cur[1152];
+  snprintf(cur, sizeof cur, "%s", root);
+  char rest[512];
+  snprintf(rest, sizeof rest, "%s", relpath);
+  char *save = NULL;
+  for (char *seg = strtok_r(rest, "/", &save); seg; seg = strtok_r(NULL, "/", &save)) {
+    DIR *d = opendir(cur);
+    if (!d) return -1;
+    struct dirent *e;
+    char hit[256] = {0};
+    while ((e = readdir(d)) != NULL) {
+      if (!strcasecmp(e->d_name, seg)) { snprintf(hit, sizeof hit, "%s", e->d_name); break; }
+    }
+    closedir(d);
+    if (!hit[0]) return -1;
+    size_t L = strlen(cur);
+    snprintf(cur + L, sizeof cur - L, "/%s", hit);
+  }
+  struct stat st;
+  if (stat(cur, &st) != 0) return -1;
+  return (long long)st.st_size;
+}
+
 static int verify_windows_tree(const char *root, RufuxCreateLog log, void *luser,
                                char *err, unsigned long cap) {
-  static const char *must[] = {"bootmgr", "sources/boot.wim", NULL};
-  char p[1152], m[1280];
-  struct stat st;
+  char m[1280];
+  // Setup finds its media by looking for these; a stick missing any of them
+  // boots into WinPE and then dies with "a media driver is missing", because
+  // what is actually missing is the installation source, not a driver.
+  static const char *must[] = {
+    "bootmgr", "setup.exe", "sources/setup.exe", "sources/boot.wim",
+    "boot/bcd", "efi/microsoft/boot/bcd", NULL};
   for (int i = 0; must[i]; i++) {
-    snprintf(p, sizeof p, "%s/%s", root, must[i]);
-    if (stat(p, &st) != 0 || st.st_size == 0) {
-      snprintf(err, cap, "extraction incomplete: '%s' is missing or empty on the stick", must[i]);
+    if (find_ci(root, must[i]) <= 0) {
+      snprintf(err, cap, "extraction incomplete: '%s' is missing or empty on the stick "
+                         "(Windows Setup reports this as a missing media driver)", must[i]);
       return -1;
     }
   }
+  // The UEFI loader the firmware (or UEFI:NTFS) hands control to.
+  static const char *loaders[] = {"efi/boot/bootx64.efi", "efi/boot/bootia32.efi",
+                                  "efi/boot/bootaa64.efi", NULL};
+  int have_loader = 0;
+  for (int i = 0; loaders[i] && !have_loader; i++)
+    if (find_ci(root, loaders[i]) > 0) have_loader = 1;
+  if (!have_loader) {
+    snprintf(err, cap, "extraction incomplete: no efi/boot/boot*.efi on the stick");
+    return -1;
+  }
   static const char *inst[] = {"sources/install.wim", "sources/install.esd", "sources/install.swm", NULL};
   for (int i = 0; inst[i]; i++) {
-    snprintf(p, sizeof p, "%s/%s", root, inst[i]);
-    if (stat(p, &st) == 0 && st.st_size > 0) {
-      snprintf(m, sizeof m, "Verified %s (%.1f MiB) on the stick.", inst[i], st.st_size / 1048576.0);
+    long long sz = find_ci(root, inst[i]);
+    if (sz > 0) {
+      snprintf(m, sizeof m, "Verified %s (%.1f MiB) on the stick.", inst[i], sz / 1048576.0);
       if (log) log(m, luser);
       return 0;
     }
@@ -555,6 +624,7 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
     if (log) log("Writing UEFI:NTFS boot partition...", luser);
     if (rufux_write_uefi_ntfs(p2, err, cap) != 0) return -1;
   }
+  wipe_part_edges(p1);
   RufuxMkfsOpts main_o = {.fs = fsname, .label = o->label, .cluster_sectors = o->cluster_sectors,
                           .dry_run = 0, .allow_fixed = o->allow_fixed, .allow_file = 0, .yes = 1};
   snprintf(m, sizeof m, "Creating file system (%s)...", fsname);
@@ -607,6 +677,15 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
   if (rufux_unmount(p1, 0, uerr, sizeof uerr) != 0 && !rc) {
     snprintf(err, cap, "installed but unmount failed: %s", uerr);
     rc = -1;
+  }
+  // ntfs-3g raises the volume dirty flag while the volume is mounted. A clean
+  // unmount clears it, but a racing partprobe/udev rescan can leave it set,
+  // and Windows then treats the volume as needing a repair pass rather than
+  // as installation media. Clearing it is cheap and safe.
+  if (!rc && !fat && rufux_have("ntfsfix")) {
+    const char *nf[] = {"ntfsfix", "-d", p1, NULL};
+    if (rufux_run(nf, 0) != 0 && log)
+      log("WARNING: could not clear the NTFS dirty flag (ntfsfix failed).", luser);
   }
   if (!rc && !gpt && log)
     log(fat ? "NOTE: this FAT32 stick boots on UEFI machines. Legacy BIOS boot code is not written yet."
