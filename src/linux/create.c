@@ -517,8 +517,9 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
              "steps:\n  1. partition %s %s: NTFS data partition first, 1 MiB UEFI:NTFS last\n"
              "  2. write UEFI:NTFS image to partition 2 (raw), format partition 1 as NTFS\n"
              "  3. mount partition 1, extract %s\n"
-             "  4. autounattend.xml (%s)\n  5. verify the copied Windows tree%s",
+             "  4. Windows customization (%s%s%s)\n  5. verify the copied Windows tree%s",
              dst, gpt ? "gpt" : "dos", src, o->wue ? o->wue : "none",
+             o->drivers ? ", drivers from " : "", o->drivers ? o->drivers : "",
              gpt ? "" : "\n  (MBR table: UEFI boot only, no legacy BIOS boot code)");
     log(m, luser);
     return 0;
@@ -555,9 +556,8 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
                                  prog ? (RufuxExtractProgress)mapped : NULL, &em,
                                  err, cap) != 0)
     rc = -1;
-  if (!rc && o->wue && strcmp(o->wue, "none")) {
-    if (rufux_write_unattend(mnt, o->wue, err, cap) != 0) rc = -1;
-    else if (log) log("Windows User Experience: autounattend.xml written.", luser);
+  if (!rc && ((o->wue && strcmp(o->wue, "none")) || (o->drivers && o->drivers[0]))) {
+    if (rufux_windows_customize(mnt, o->wue, o->drivers, log, luser, err, cap) != 0) rc = -1;
   }
   stage(prog, puser, 88);
   if (!rc) rc = verify_windows_tree(mnt, log, luser, err, cap);

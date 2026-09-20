@@ -42,6 +42,12 @@ details matter for Windows Setup:
 - The small partition is typed as basic data, not "EFI System". Rufus
   documents that Setup fails when a disk has two ESPs.
 
+Windows User Experience follows Rufus's `wue.c`: the Secure Boot/TPM/RAM
+bypass is written into the SYSTEM hive of `boot.wim` (with `wimlib-imagex`
+and `hivexsh`), and only if that fails is an answer file with a `windowsPE`
+pass used. Other options go to `sources\$OEM$\$$\Panther\unattend.xml`.
+`--drivers` copies a folder to `$WinPEDriver$`.
+
 Only UEFI boot works for NTFS sticks. The NTFS boot sector loads more code
 from sectors 1-15 of `$Boot`, which `mkfs.ntfs` leaves empty, so BIOS
 boot needs a different approach (see [docs/TODO.md](docs/TODO.md)).

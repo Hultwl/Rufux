@@ -62,6 +62,23 @@ with anything you care about, and try `--dry-run` first.
 - Not supported: ReFS, the built-in Windows ISO downloader, Windows To Go.
   [PORTING.md](PORTING.md) explains each.
 
+## If Windows Setup can't find your drives
+
+A stick that boots and then shows an empty driver list usually means
+Setup can't see the storage controller, not that the stick is bad. This is
+common on laptops with Intel RST/VMD (RAID) mode. Two fixes:
+
+1. In the firmware settings, switch the SATA/storage mode from
+   "RAID / Intel RST" to **AHCI**, install, and switch back if you need it.
+2. Or download the storage driver from your laptop maker (look for
+   "Intel Rapid Storage Technology" or "VMD" driver, F6 version), unzip it,
+   and pass the folder when writing the stick:
+   `rufux create Win11.iso /dev/sdX --mode windows --drivers ~/vmd --real --yes`,
+   or use the drivers folder in the GUI's Windows options.
+
+If Setup instead says it can't find the *install media* (before you pick a
+disk), send the log; that is a different problem.
+
 ## Install
 
 **AppImage:** download it from the
@@ -81,7 +98,8 @@ sudo cmake --install build
 
 The host needs `dosfstools`, `ntfs-3g`/`ntfsprogs`, `exfatprogs`,
 `e2fsprogs`, `util-linux`, `syslinux`, `udisks2`, and `p7zip` or
-`libarchive`. See [packaging/README.md](packaging/README.md) for the full
+`libarchive`. For the Windows 11 checks bypass without an
+answer file, also `wimlib` (wimlib-imagex) and `hivex`. See [packaging/README.md](packaging/README.md) for the full
 list per distribution. Some tests skip themselves when a tool or root
 access is missing, and the DOS boot-record test needs `gawk`.
 

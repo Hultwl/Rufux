@@ -49,6 +49,12 @@ USB stick and a Windows ISO for boot testing.
 - UDisks2 D-Bus backend.
 - More translations beyond English, French and Spanish.
 
+## Windows customization
+
+Not done yet from Rufus's list: local account creation, copying the host's
+locale, disabling BitLocker auto-encryption, "skip disk selection" silent
+install, and the 2023 boot loaders option.
+
 ## CI
 
 `docs/ci-qt.patch` moves the CI and AppImage workflows to Qt6. It could

@@ -21,7 +21,7 @@ for scheme in gpt dos; do
   truncate -s 1G $T/d.img
   L=$(losetup -f --show -P $T/d.img)
   if ! "$R" create $T/w.iso $L --mode windows --scheme $scheme --label WINTEST \
-       --wue bypass --real --yes --allow-fixed >$T/log 2>&1; then
+       --wue nro --real --yes --allow-fixed >$T/log 2>&1; then
     bad "$scheme burn"; tail -5 $T/log; losetup -d $L; continue
   fi
   tab=$(sfdisk -d $L)
@@ -37,8 +37,8 @@ for scheme in gpt dos; do
   fi
   cmp -s ${L}p2 "$HERE/../res/uefi/uefi-ntfs.img" || bad "$scheme: partition 2 differs from the UEFI:NTFS image"
   if mount -t ntfs-3g ${L}p1 $T/m; then
-    diff -rq $T/x $T/m --exclude=autounattend.xml >$T/diff 2>&1 || { bad "$scheme: tree differs from the ISO"; head -5 $T/diff; }
-    grep -q BypassTPMCheck $T/m/autounattend.xml || bad "$scheme: autounattend.xml missing"
+    diff -rq $T/x $T/m --exclude='$OEM$' >$T/diff 2>&1 || { bad "$scheme: tree differs from the ISO"; head -5 $T/diff; }
+    grep -q BypassNRO $T/m/sources/'$OEM$'/'$$'/Panther/unattend.xml || bad "$scheme: Panther unattend.xml missing"
     umount $T/m
   else bad "$scheme: cannot mount the data partition"; fi
   ntfsfix -n ${L}p1 >/dev/null 2>&1 || bad "$scheme: NTFS reports problems"

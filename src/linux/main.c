@@ -46,7 +46,7 @@ static void usage(const char *p) {
          "  %s secureboot-status\n"
          "  %s validate-efi FILE\n"
          "  %s update-check\n"
-         "  %s create SRC|none DST --mode dd|extract|format|dos|windows [--scheme gpt|dos] [--fs vfat|ntfs|exfat|ext4|udf] [--label L] [--persist-mb N] [--cluster-sectors N] [--badblock-passes N] [--wue bypass,nro,privacy,all,none] [--quick|--full] [--no-autorun] [--uefi-validate] [--dry-run|--real] [--allow-file] [--allow-fixed] [--yes] [--verify]\n"
+         "  %s create SRC|none DST --mode dd|extract|format|dos|windows [--scheme gpt|dos] [--fs vfat|ntfs|exfat|ext4|udf] [--label L] [--persist-mb N] [--cluster-sectors N] [--badblock-passes N] [--wue bypass,nro,privacy,all,none] [--drivers DIR] [--quick|--full] [--no-autorun] [--uefi-validate] [--dry-run|--real] [--allow-file] [--allow-fixed] [--yes] [--verify]\n"
          "  %s download-windows\n"
          "  %s --gui [--theme system|dark|light]\n",
          RUFUX_VERSION, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p);
@@ -396,6 +396,7 @@ int main(int argc, char **argv) {
       else if (!strcmp(argv[i], "--no-autorun")) o.extended_label = 0;
       else if (!strcmp(argv[i], "--uefi-validate")) o.uefi_validate = 1;
       else if (!strcmp(argv[i], "--wue") && i + 1 < argc) o.wue = argv[++i];
+      else if (!strcmp(argv[i], "--drivers") && i + 1 < argc) o.drivers = argv[++i];
     }
     if ((!strcmp(o.mode, "dd") || !strcmp(o.mode, "extract") || !strcmp(o.mode, "windows")) && !src) {
       fprintf(stderr, "create: --mode %s needs an image (use 'none' only with --mode format|dos)\n", o.mode);

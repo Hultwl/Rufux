@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.4.0 (Windows customization rewritten like Rufus)
+
+- **Secure Boot / TPM / RAM bypass now works under the hood.** The
+  `LabConfig` keys are written into the SYSTEM registry hive inside
+  `sources/boot.wim` (image 2), read back, and checked, exactly as Rufus
+  does. Setup's screens stay untouched. This needs `wimlib-imagex` and
+  `hivexsh`; without them Rufux falls back to an answer file and tells
+  you that the fallback changes Setup's first screens.
+- **The answer file no longer forces Setup into partly unattended mode.**
+  Before, every customization wrote a `windowsPE` pass (with `UserData`),
+  even for "no online account" alone. Rufus documents that such a pass
+  alters the installer's flow. Now the `windowsPE` pass exists only in the
+  fallback. Everything else goes to `sources/$OEM$/$$/Panther/unattend.xml`,
+  where Rufus puts it, and the architecture (amd64, arm64, x86) is taken
+  from the media instead of being hardcoded.
+- **Driver injection: `--drivers DIR`** (and a folder picker in the GUI's
+  Windows options). The folder is copied to `$WinPEDriver$`, which Setup
+  loads automatically. Use it when Setup says a media driver is missing or
+  shows no drives, for example with Intel RST/VMD controllers.
+- New test: tests/test_wue.sh edits a real two-image WIM with a real
+  registry hive and checks the bypass, image 1 untouched, the answer-file
+  placement, the drivers, and the fallback.
+
 ## 1.3.0 (Qt6 interface, extract-mode fix)
 
 - Fixed: `extract` mode (and the "Write in ISO Image mode" option) put

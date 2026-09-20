@@ -12,7 +12,8 @@ typedef struct {
   const char *scheme; // "gpt" | "dos"
   const char *fs; // vfat|ntfs|exfat|ext4|udf
   const char *label; // may be NULL
-  const char *wue; // windows mode: comma list bypass,nro,privacy,all (NULL = bypass)
+  const char *wue; // windows mode: comma list bypass,nro,privacy,all,none (NULL = nothing)
+  const char *drivers; // windows mode: folder copied to $WinPEDriver$ (NULL = none)
   unsigned long persist_mb;
   int cluster_sectors; // 0 = default
   int quick_format; // 0 = zero first 16MB before real block flows

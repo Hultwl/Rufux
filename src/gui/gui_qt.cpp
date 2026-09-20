@@ -169,6 +169,7 @@ class MainWindow : public QWidget {
   QProcess *worker = nullptr;
   QString lastError;
   QStringList logLines;
+  QString driversDir;
 
   void build() {
     auto *root = new QVBoxLayout(this);
@@ -542,7 +543,7 @@ class MainWindow : public QWidget {
   }
 
   // --- start / cancel ---
-  bool askWindowsOptions(QString *out) {
+  bool askWindowsOptions(QString *out, QString *drivers) {
     QDialog d(this);
     d.setWindowTitle("Windows User Experience");
     auto *l = new QVBoxLayout(&d);
@@ -554,6 +555,23 @@ class MainWindow : public QWidget {
     l->addWidget(a);
     l->addWidget(b);
     l->addWidget(c);
+    // Setup loads everything in $WinPEDriver$ automatically. This is the fix
+    // when the installer shows no drives (Intel RST/VMD, some NVMe/RAID).
+    auto *dl = new QLabel("Storage drivers (optional): a folder with .inf drivers, for example Intel RST/VMD."
+                          "<br>Use this if Setup says a driver is missing or shows no drives.");
+    dl->setWordWrap(true);
+    l->addWidget(dl);
+    auto *row = new QHBoxLayout;
+    auto *dirEdit = new QLineEdit(driversDir);
+    dirEdit->setPlaceholderText("No drivers");
+    auto *browse = new QPushButton("Browse...");
+    QObject::connect(browse, &QPushButton::clicked, [&] {
+      const QString p = QFileDialog::getExistingDirectory(&d, "Select the drivers folder", dirEdit->text());
+      if (!p.isEmpty()) dirEdit->setText(p);
+    });
+    row->addWidget(dirEdit, 1);
+    row->addWidget(browse);
+    l->addLayout(row);
     auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
     QObject::connect(bb, &QDialogButtonBox::accepted, &d, &QDialog::accept);
     QObject::connect(bb, &QDialogButtonBox::rejected, &d, &QDialog::reject);
@@ -564,6 +582,8 @@ class MainWindow : public QWidget {
     if (b->isChecked()) v << "nro";
     if (c->isChecked()) v << "privacy";
     *out = v.isEmpty() ? QStringLiteral("none") : v.join(",");
+    driversDir = dirEdit->text().trimmed();
+    *drivers = driversDir;
     return true;
   }
 
@@ -582,8 +602,8 @@ class MainWindow : public QWidget {
       mode = img == 2 ? "windows" : (img == 1 ? "extract" : "dd");
     }
 
-    QString wue = "none";
-    if (mode == "windows" && chkWue->isChecked() && !askWindowsOptions(&wue)) { log("Cancelled."); return; }
+    QString wue = "none", drivers;
+    if (mode == "windows" && chkWue->isChecked() && !askWindowsOptions(&wue, &drivers)) { log("Cancelled."); return; }
 
     QMessageBox::StandardButton r = QMessageBox::warning(
         this, "WARNING: DESTRUCTIVE OPERATION",
@@ -606,6 +626,7 @@ class MainWindow : public QWidget {
       << (chkQuick->isChecked() ? "--quick" : "--full");
     if (!chkExt->isChecked()) a << "--no-autorun";
     if (mode == "windows") a << "--wue" << wue;
+    if (mode == "windows" && !drivers.isEmpty()) a << "--drivers" << drivers;
     if (chkUefi->isChecked()) a << "--uefi-validate";
     a << "--verify";
     if (chkFixed->isChecked()) a << "--allow-fixed";

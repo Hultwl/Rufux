@@ -14,6 +14,12 @@ int rufux_stage_uefi_ntfs(const char *tmpdir, char *err, unsigned long cap);
 // loaders and NTFS/exFAT drivers) raw onto its own partition and verify it
 // by reading it back. No mkfs, no mount.
 int rufux_write_uefi_ntfs(const char *part_dev, char *err, unsigned long cap);
+// Windows User Experience, Rufus style. `wue` is the comma list
+// bypass,nro,privacy,all,none (NULL = bypass); `drivers` is an optional folder
+// copied to $WinPEDriver$. See wininstall.c for how each option is applied.
+typedef void (*RufuxWueLog)(const char *msg, void *user);
+int rufux_windows_customize(const char *root, const char *wue, const char *drivers,
+                            RufuxWueLog log, void *user, char *err, unsigned long cap);
 // Write autounattend.xml: LabConfig HW bypasses + optional NRO bypass +
 // privacy screens off. `wue` is a comma list: bypass,nro,privacy (any
 // subset; NULL/empty = bypass only... pass "" for bypass-only default).
