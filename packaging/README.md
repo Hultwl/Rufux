@@ -20,15 +20,31 @@ No Flatpak — sandboxes and raw disks don't mix, tried that, walked away.
 
 ## Arch Linux (AUR)
 
-`packaging/PKGBUILD` builds from the release tag:
+Two packages, both pushed automatically — no manual AUR uploads:
+
+- `rufux` (stable): refreshed on every GitHub release from
+  `packaging/PKGBUILD`, which builds the release tag.
+- `rufux-git`: refreshed on every push to `main`; its version
+  follows git, so `paru -S rufux-git` always rebuilds the latest
+  commit.
 
 ```sh
-cp packaging/PKGBUILD /tmp/rufux-pkg/ && cd /tmp/rufux-pkg
-makepkg -si
+paru -S rufux        # stable release
+paru -S rufux-git    # latest main
 ```
 
-Living on the edge? `packaging/aur/rufux-git/` tracks `main` instead —
-`paru -S rufux-git` and every rebuild follows the latest commit.
+The automation lives in `.github/workflows/aur.yml`. It needs one
+secret, `AUR_SSH_PRIVATE_KEY` — without it the jobs skip quietly:
+
+1. Generate a deploy key (or reuse an existing AUR key):
+   `ssh-keygen -t ed25519 -f ~/.ssh/rufux-aur -N ""`
+2. Add the public half to your aur.archlinux.org account.
+3. Add the private half as a repo secret named
+   `AUR_SSH_PRIVATE_KEY` (Settings → Secrets and variables →
+   Actions).
+
+Manual fallback (same thing the workflow does):
+`packaging/aur/publish.sh` (needs an Arch box with the AUR key).
 
 ## From source (any distro)
 
