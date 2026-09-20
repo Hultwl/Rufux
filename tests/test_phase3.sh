@@ -66,7 +66,7 @@ fi
 [ -f "$SRC_DIR/doc/rufux.1" ] && grep -q "secureboot" "$SRC_DIR/doc/rufux.1" && ok "man page" || bad "man page"
 python3 -c "import xml.dom.minidom;xml.dom.minidom.parse('$SRC_DIR/res/linux/io.github.hultwl.rufux.policy')" \
   && ok "polkit policy XML" || bad "polkit policy XML"
-grep -q "^Exec=rufux$" "$SRC_DIR/res/linux/io.github.hultwl.rufux.desktop" && ok "desktop file" || bad "desktop file"
+grep -q "^Exec=rufux --gui$" "$SRC_DIR/res/linux/io.github.hultwl.rufux.desktop" && ok "desktop file" || bad "desktop file"
 [ -f "$SRC_DIR/.github/workflows/rufux.yml" ] && ok "CI workflow" || bad "CI workflow"
 
 # 7. translations compile

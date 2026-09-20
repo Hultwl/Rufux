@@ -1,0 +1,143 @@
+name: aur
+
+# Keep the AUR in step with GitHub, automatically:
+# - every push to main refreshes rufux-git (.SRCINFO pkgver follows git)
+# - every published release refreshes the stable rufux package
+# Needs one secret: AUR_SSH_PRIVATE_KEY (private half of a key whose
+# public half is registered on the AUR account). Without it both jobs
+# skip quietly; see packaging/README.md.
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+concurrency:
+  group: aur-publish
+  cancel-in-progress: false
+
+jobs:
+  # secrets.* is not allowed in a job-level `if`; resolve it once here
+  # (step-level `if` permits it) and gate the real jobs on the output.
+  guard:
+    runs-on: ubuntu-latest
+    outputs:
+      have_key: ${{ steps.check.outputs.have_key }}
+    steps:
+      - id: check
+        run: |
+          if [ -n "${{ secrets.AUR_SSH_PRIVATE_KEY }}" ] || [ -n "${{ secrets.AUR }}" ]; then
+            echo "have_key=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  aur-git:
+    name: "AUR: rufux-git"
+    needs: [guard]
+    if: github.ref == 'refs/heads/main' && needs.guard.outputs.have_key == 'true'
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install git and ssh
+        run: pacman -Sy --noconfirm git openssh
+
+      - name: Clone project (full history, pkgver needs tags)
+        run: |
+          git config --global --add safe.directory '*'
+          git clone https://github.com/Hultwl/Rufux.git /root/rufux
+
+      - name: Set up AUR SSH key
+        run: |
+          install -dm700 /root/.ssh
+          key='${{ secrets.AUR_SSH_PRIVATE_KEY }}'
+          [ -n "$key" ] || key='${{ secrets.AUR }}'
+          printf '%s\n' "$key" > /root/.ssh/aur
+          chmod 600 /root/.ssh/aur
+          # Fail fast with a readable error instead of a cryptic ssh one.
+          ssh-keygen -y -f /root/.ssh/aur > /dev/null || {
+            echo "ERROR: the AUR secret is not a valid private key. It must contain the full private key text (-----BEGIN OPENSSH PRIVATE KEY----- ...), not the public key."
+            exit 1
+          }
+          ssh-keyscan -t ed25519 aur.archlinux.org >> /root/.ssh/known_hosts
+          printf 'Host aur.archlinux.org\n\tIdentityFile /root/.ssh/aur\n\tIdentitiesOnly yes\n' > /root/.ssh/config
+
+      - name: Regenerate .SRCINFO and push
+        run: |
+          useradd -m builder 2>/dev/null || true
+          work=$(mktemp -d)
+          git clone "ssh://aur@aur.archlinux.org/rufux-git.git" "$work/rufux-git"
+          cp /root/rufux/packaging/aur/rufux-git/PKGBUILD "$work/rufux-git/PKGBUILD"
+          chown -R builder:builder "$work"
+          # Fetch sources first: pkgver() resolves against the git checkout.
+          # --nodeps: no toolchain here, we only need the sources + version.
+          su builder -c "cd '$work/rufux-git' && makepkg -o --noconfirm --nodeps"
+          su builder -c "cd '$work/rufux-git' && makepkg --printsrcinfo > .SRCINFO"
+          cd "$work/rufux-git"
+          if git diff --quiet; then
+            echo "No AUR changes, skipping push."
+            exit 0
+          fi
+          ver=$(grep -m1 '^\s*pkgver' .SRCINFO | awk '{print $3}')
+          git -c user.name="Rufux CI" -c user.email="Hultwl@users.noreply.github.com" \
+            commit -am "Update to $ver"
+          git push origin HEAD:master
+
+  aur-stable:
+    name: "AUR: rufux"
+    needs: [guard]
+    if: github.event_name == 'release' && needs.guard.outputs.have_key == 'true'
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    steps:
+      - name: Install git and ssh
+        run: pacman -Sy --noconfirm git openssh
+
+      - name: Clone project
+        run: |
+          git config --global --add safe.directory '*'
+          git clone --branch main https://github.com/Hultwl/Rufux.git /root/rufux
+
+      - name: Check the tag matches the tree
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          echo "Release tag: $tag"
+          pkgver="$(grep -oP '^pkgver=\K[0-9.]+' /root/rufux/packaging/PKGBUILD)"
+          cmakever="$(grep -oP 'project\(Rufux VERSION \K[0-9.]+' /root/rufux/CMakeLists.txt)"
+          [ "$tag" = "$pkgver" ] && [ "$tag" = "$cmakever" ] || {
+            echo "Tag v$tag disagrees with tree (PKGBUILD $pkgver, CMake $cmakever). Fix and re-release."
+            exit 1
+          }
+
+      - name: Set up AUR SSH key
+        run: |
+          install -dm700 /root/.ssh
+          key='${{ secrets.AUR_SSH_PRIVATE_KEY }}'
+          [ -n "$key" ] || key='${{ secrets.AUR }}'
+          printf '%s\n' "$key" > /root/.ssh/aur
+          chmod 600 /root/.ssh/aur
+          # Fail fast with a readable error instead of a cryptic ssh one.
+          ssh-keygen -y -f /root/.ssh/aur > /dev/null || {
+            echo "ERROR: the AUR secret is not a valid private key. It must contain the full private key text (-----BEGIN OPENSSH PRIVATE KEY----- ...), not the public key."
+            exit 1
+          }
+          ssh-keyscan -t ed25519 aur.archlinux.org >> /root/.ssh/known_hosts
+          printf 'Host aur.archlinux.org\n\tIdentityFile /root/.ssh/aur\n\tIdentitiesOnly yes\n' > /root/.ssh/config
+
+      - name: Regenerate .SRCINFO and push
+        run: |
+          useradd -m builder 2>/dev/null || true
+          work=$(mktemp -d)
+          git clone "ssh://aur@aur.archlinux.org/rufux.git" "$work/rufux"
+          cp /root/rufux/packaging/PKGBUILD "$work/rufux/PKGBUILD"
+          chown -R builder:builder "$work"
+          su builder -c "cd '$work/rufux' && makepkg --printsrcinfo > .SRCINFO"
+          cd "$work/rufux"
+          if git diff --quiet; then
+            echo "No AUR changes, skipping push."
+            exit 0
+          fi
+          ver=$(grep -m1 '^\s*pkgver' .SRCINFO | awk '{print $3}')
+          git -c user.name="Rufux CI" -c user.email="Hultwl@users.noreply.github.com" \
+            commit -am "Update to $ver"
+          git push origin HEAD:master

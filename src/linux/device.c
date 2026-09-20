@@ -135,6 +135,9 @@ int rufux_list_devices(RufuxDevice *out, int max, int include_fixed) {
     }
     dev->mounted = dev_is_mounted(e->d_name);
     dev->size_bytes = dev_size_bytes(dev->sysname, dev->devnode);
+    // Empty card-reader slots and dead sticks show up as sdX with capacity 0.
+    // They cannot be written and only confuse the list (Rufus hides them too).
+    if (dev->size_bytes == 0) continue;
     n++;
   }
   closedir(d);
@@ -236,6 +239,12 @@ int rufux_check_target(const char *path, int allow_fixed, int allow_file,
   }
   if (dev_is_mounted(disk)) {
     snprintf(err, cap, "refusing mounted disk '%s' (unmount first)", disk);
+    return -1;
+  }
+  if (dev_size_bytes(disk, path) == 0) {
+    snprintf(err, cap,
+             "'%s' reports a capacity of 0 bytes: an empty card-reader slot, or a drive the "
+             "kernel cannot read. Replug it or choose another entry.", path);
     return -1;
   }
   return 0;
