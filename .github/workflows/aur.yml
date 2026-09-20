@@ -27,8 +27,10 @@ jobs:
       have_key: ${{ steps.check.outputs.have_key }}
     steps:
       - id: check
-        if: secrets.AUR_SSH_PRIVATE_KEY != ''
-        run: echo "have_key=true" >> "$GITHUB_OUTPUT"
+        run: |
+          if [ -n "${{ secrets.AUR_SSH_PRIVATE_KEY }}" ]; then
+            echo "have_key=true" >> "$GITHUB_OUTPUT"
+          fi
 
   aur-git:
     name: "AUR: rufux-git"
