@@ -70,7 +70,8 @@ jobs:
           cp /root/rufux/packaging/aur/rufux-git/PKGBUILD "$work/rufux-git/PKGBUILD"
           chown -R builder:builder "$work"
           # Fetch sources first: pkgver() resolves against the git checkout.
-          su builder -c "cd '$work/rufux-git' && makepkg -o --noconfirm"
+          # --nodeps: no toolchain here, we only need the sources + version.
+          su builder -c "cd '$work/rufux-git' && makepkg -o --noconfirm --nodeps"
           su builder -c "cd '$work/rufux-git' && makepkg --printsrcinfo > .SRCINFO"
           cd "$work/rufux-git"
           if git diff --quiet; then

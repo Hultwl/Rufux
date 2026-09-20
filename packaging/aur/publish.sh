@@ -13,7 +13,7 @@ work=$(mktemp -d)
 git clone "ssh://aur@aur.archlinux.org/$pkg.git" "$work/$pkg"
 cp "$here/$pkg/PKGBUILD" "$work/$pkg/PKGBUILD"
 cd "$work/$pkg"
-makepkg -o --noconfirm                 # fetch sources so pkgver() resolves
+makepkg -o --noconfirm --nodeps       # fetch sources so pkgver() resolves
 makepkg --printsrcinfo > .SRCINFO      # regenerates pkgver from git tags
 git add PKGBUILD .SRCINFO
 git commit -m "Update to $(grep -m1 '^\s*pkgver' .SRCINFO | awk '{print $3}')"
