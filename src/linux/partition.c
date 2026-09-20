@@ -140,12 +140,7 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
     return 0;
   }
   // write script to temp and run sfdisk < script (no shell)
-  // Pick a temp dir on real disk (not /tmp which may be a small RAM disk).
-  char *tmpbase = rufux_tmpdir_pick(dst, 1 << 20); // need 1 MiB
-  if (!tmpbase) { snprintf(err, cap, "no writable temp directory with enough space"); return -1; }
-  char tmpl[1200];
-  snprintf(tmpl, sizeof tmpl, "%s/rufux-sfdisk-XXXXXX", tmpbase);
-  free(tmpbase);
+  char tmpl[] = "/tmp/rufux-sfdisk-XXXXXX";
   int fd = mkstemp(tmpl);
   if (fd < 0) { snprintf(err, cap, "mkstemp failed"); return -1; }
   size_t L = strlen(script);

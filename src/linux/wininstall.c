@@ -8,7 +8,6 @@
 #include <unistd.h>
 #include <strings.h>
 #include <ctype.h>
-#include <pwd.h>
 #include <sys/stat.h>
 #include <sys/ioctl.h>
 #include <fcntl.h>
@@ -77,16 +76,7 @@ static int cache_dir(char *out, unsigned long cap) {
   if (base && base[0]) snprintf(out, cap, "%s/rufux", base);
   else {
     const char *home = getenv("HOME");
-    if (!home || !home[0]) {
-      // pkexec runs as root; try to recover the invoking user's home
-      const char *uid_str = getenv("PKEXEC_UID");
-      if (!uid_str || !uid_str[0]) uid_str = getenv("SUDO_UID");
-      if (uid_str && uid_str[0]) {
-        struct passwd *pw = getpwuid((uid_t)strtoul(uid_str, NULL, 10));
-        if (pw && pw->pw_dir && pw->pw_dir[0]) home = pw->pw_dir;
-      }
-    }
-    if (!home || !home[0]) home = "/var/tmp";
+    if (!home || !home[0]) home = "/tmp";
     snprintf(out, cap, "%s/.cache/rufux", home);
   }
   char cmd[1152];
@@ -643,13 +633,7 @@ static int patch_boot_wim(const char *root, RufuxWueLog log, void *lu) {
   snprintf(wim, sizeof wim, "%s/sources/boot.wim", root);
   struct stat st;
   if (stat(wim, &st) != 0) { say(log, lu, "boot.wim not found: using the answer-file fallback."); return 1; }
-  // Pick a temp dir on real disk (ISO dir, home, /var/tmp, then /tmp).
-  // boot.wim is typically 500 MiB+ so we need substantial headroom.
-  char *tmpbase = rufux_tmpdir_pick(wim, 1ULL << 30); // 1 GiB free
-  if (!tmpbase) { say(log, lu, "No writable temp directory with enough space."); return 1; }
-  char dir[1200];
-  snprintf(dir, sizeof dir, "%s/rufux-wue-XXXXXX", tmpbase);
-  free(tmpbase);
+  char dir[] = "/tmp/rufux-wue-XXXXXX";
   if (!mkdtemp(dir)) return 1;
   char hive[1200], dest[1200], cmd[1500], script[1200], m[600];
   snprintf(hive, sizeof hive, "%s/SYSTEM", dir);

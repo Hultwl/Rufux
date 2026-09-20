@@ -1,24 +1,5 @@
 # Changelog
 
-## 1.5.1 (hotfix: temp dir on real disk when running as root)
-
-- **Fixed: worker ran out of space on `/tmp` (often a small RAM disk).**
-  When the GUI escalates via `pkexec`, the worker runs as root and
-  previously defaulted to `/tmp` for all staging and scratch files.
-  On many distros `/tmp` is a tmpfs backed by RAM (often 2-4 GiB),
-  which is not enough for large ISOs or Windows WIM images. Rufux now
-  picks a writable temp directory on real disk: first a `rufux_tmp/`
-  folder next to the ISO, then `$HOME/.cache/rufux`, then `/var/tmp`,
-  and only falls back to `/tmp` as a last resort. Each candidate is
-  checked with `statvfs` to ensure sufficient free space.
-- The UEFI:NTFS staging (`wimlib-imagex` + `hivexsh` for the Secure
-  Boot bypass) and the `sfdisk` script temp file both use the new
-  location. The UEFI:NTFS download cache also prefers `/var/tmp` over
-  `/tmp` when `$HOME` is unavailable.
-- The invoking user's home is recovered from `PKEXEC_UID` / `SUDO_UID`
-  when the worker runs as root, so `$HOME/.cache/rufux` resolves to
-  the real user's cache rather than root's.
-
 ## 1.5.0 (FAT32 Windows media, Rufus's Windows options, new window)
 
 - **Windows media on FAT32.** Pick FAT32 for a Windows image and Rufux makes
@@ -86,7 +67,7 @@
   even for "no online account" alone. Rufus documents that such a pass
   alters the installer's flow. Now the `windowsPE` pass exists only in the
   fallback. Everything else goes to `sources/$OEM$/$$/Panther/unattend.xml`,
-  where Rufux puts it, and the architecture (amd64, arm64, x86) is taken
+  where Rufus puts it, and the architecture (amd64, arm64, x86) is taken
   from the media instead of being hardcoded.
 - **Driver injection: `--drivers DIR`** (and a folder picker in the GUI's
   Windows options). The folder is copied to `$WinPEDriver$`, which Setup
@@ -154,3 +135,192 @@
   rescan-and-retry on each mount before failing.
 - The GUI failure dialog no longer shows command-echo lines as the
   reason (only real error text).
+
+## 1.2.5 (answer file aligned with Rufus)
+
+- autounattend.xml rewritten against upstream Rufus wue.c: wcm
+  namespaces on every component, wcm:action on list items (Setup
+  ignored them without it), HW bypasses as WinPE reg commands,
+  empty product key block, BitLocker device-encryption guard.
+  Bypass/NRO/privacy theoretically apply for real now.
+
+## 1.2.4 (hotfix: data partition type + loud GUI failures)
+
+- GPT data partition is typed Microsoft basic data now (was Linux
+  filesystem type) — matches Rufus; Windows Setup sees a Windows
+  data volume.
+- GUI failures carry the reason: worker pipes drain to EOF and the
+  error dialog shows the worker's last error line instead of "see
+  the log" above an empty log.
+- Includes the 1.2.3 boot fix (full UEFI:NTFS tree: loader plus
+  EFI/Rufus NTFS/exFAT drivers, so no more "couldn't find/load
+  NTFS driver") and the Windows User Experience dialog.
+
+## 1.2.3 (UEFI:NTFS drivers + Windows User Experience dialog)
+
+- Windows USBs booted the UEFI:NTFS loader but stopped at
+  "couldn't find/load NTFS driver": only bootx64.efi was staged.
+  The loader needs its NTFS driver beside it, so the ESP now gets
+  the full EFI tree (loaders plus EFI/Rufus ntfs/exfat drivers)
+  unpacked from the in-tree uefi-ntfs.img — no download needed,
+  works offline.
+- Windows installation mode now asks first: a Windows User
+  Experience dialog on START (remove RAM/Secure Boot/TPM checks,
+  online-account requirement, data collection), and the choice is
+  actually passed to the worker (previously the GUI selection was
+  dropped).
+
+## 1.2.2 (UDF extraction fix + GUI cleanup)
+
+- Windows (UDF) ISOs extracted only the first file while reporting
+  success: bsdtar lists some UDF layouts as a single README and exits
+  0, so the disk was left with one file and "Done". UDF images now
+  route to 7z, non-UDF images keep bsdtar-first with a 7z fallback,
+  and an extraction that lands far short of the image size fails
+  loudly instead of finishing green.
+- Fixed a deadlock in command output capture: it stopped reading once
+  the buffer filled, which killed large-output tools (SIGPIPE) and
+  corrupted the result.
+- Windows ISO detection is now UDF-aware (probe reports udf: yes).
+- GUI: labels moved into a right-aligned column with controls beside
+  them (the Rufus shape) instead of stacked on their own rows, the
+  paired controls align to that column, persistence has its own row,
+  the form scrolls so START/CLOSE cannot be clipped, and the
+  boot-selection combo shows the picked image's name.
+
+## 1.2.1 (BIOS bootability)
+
+- MBR partitions get filesystem-correct types (vfat 0c, ntfs/exfat
+  07) plus the bootable flag — legacy BIOS media actually boots
+  now (proven the old table was type 83, unflagged).
+- Syslinux chainloader wired into BIOS flows (was dead code);
+  warns loudly when the binary is missing.
+- `--wue none` disables cleanly instead of erroring.
+- mkfs dead argv arrays removed.
+
+- FreeDOS bootable disks: DOS partition + FAT32 + KERNEL.SYS-first
+  copy + FreeDOS boot record (ms-sys blobs, Linux-native writer) +
+  DOS MBR. Boot picker entry included, byte-exact tested.
+- Windows installation media: ESP + NTFS, ISO extract, UEFI:NTFS
+  loader fetched from upstream and cached, autounattend.xml with
+  Win11 requirement bypasses (TPM/SB/RAM/CPU/storage), NRO and
+  privacy options. GUI auto-detects Windows ISOs.
+- Honest refusals: ReFS (no Linux formatter), Windows ISO
+  downloader (`download-windows` explains the manual path).
+- Scope table updated: what shipped vs what stays out and why.
+
+- Checksums x4: md5/sha1/sha256/sha512 (EVP), CLI `--algo`,
+  GUI dialog shows all four.
+- Fixed VHD images: footer verified, payload-only writes;
+  dynamic/VHDX refused with a qemu-img pointer.
+- Bad-blocks write patterns (0xAA/0x55/0xFF/0x00, rotating
+  1-4 passes) as the pre-write gate and standalone command.
+- Scope table in PORTING.md: what's ported, what's honestly
+  out of scope, and why.
+
+- Portal theme fix: unwrap variant-wrapped color-scheme replies
+  (COSMIC answers on the legacy namespace); proven live.
+- No Flatpak: sandbox and raw disks don't mix, so all Flatpak
+  packaging left the tree (manifest, metadata, guard, docs).
+
+- Partition rescan actually runs (was log-only): standalone
+  `partition` rescans via partprobe + udevadm settle.
+- Honest UEFI validation message: header/subsystem check only,
+  no signature verified.
+- Per-filesystem label limits everywhere (vfat 11, exfat 15,
+  ext 16, ntfs/udf 32): GUI truncates, CLI fails fast.
+- Flatpak: block devices refused up front with directions
+  (no host pkexec path); scope documented in packaging/README.
+- Version drift guard: tests/test_packaging.sh asserts CMake,
+  PKGBUILD, Flatpak manifest, and CHANGELOG agree.
+- No more shell-outs: udisksctl via fork+execvp capture,
+  du via nftw, curl/bootctl via shared rufux_capture helper.
+- SHA-256 now OpenSSL EVP (hand-rolled implementation deleted);
+  build requires libcrypto.
+- El Torito parsed structurally (catalog validation-entry
+  platform id) instead of byte-scanning for 0xEF.
+- mkfs argv on stack (reentrant); persist checks tools before
+  truncating; badblocks labeled a read-only surface scan.
+
+- UI stays alive during burns: worker pipes drain non-blocking
+  (previously the window froze through long silent phases).
+- Theme follows the desktop via the Settings portal (both
+  namespaces), GTK settings.ini, then COSMIC-dark default.
+
+- Worker stderr now streams into the GUI log (auth failures, refusal
+  reasons) plus the worker exit code — failures are never silent.
+- The worker dismounts the target's own partitions before touching
+  it (Rufus behavior; consent was the START warning) instead of
+  refusing auto-mounted sticks.
+
+- Real progress bar: every flow reports staged percent end to end
+  (bad-blocks 0-10, zero 10-15, write 15-85, verify 85-100; extract
+  8-82 via destination-growth polling, rest named stages). CLI shows
+  speed + ETA; GUI status shows live percent.
+- Extraction progress for CLI `extract` too (was silent).
+- Run safety: START/CLOSE lock while the worker runs (no double
+  burns, no closing mid-write); writer refuses source == target.
+- vfat + >4GiB image refused early with an NTFS/exFAT pointer
+  (FAT32 cannot hold such files; UEFI:NTFS driver is future work).
+
+- Consolidated stable release: everything below in one cut.
+- AppImage attached to the release (built by CI on Ubuntu 24.04).
+- Bare `rufux` with a display opens the GUI (app-grid friendly).
+- Root escalation that works from AppImages: resolve the real
+  executable (readlink, not /proc/self/exe through env) and
+  re-run the $APPIMAGE file itself (FUSE mounts are user-private,
+  root gets EACCES inside them).
+- GUI runs as the invoking user; START escalates per-operation
+  (pkexec worker with streamed progress) instead of running the
+  whole app as root. Kills the root-on-Wayland display failures,
+  theme loss, portal loss, and dconf spam at the root.
+
+## v1.0.3
+
+- Fix GPT ESP type: real GUID C12A7328-F81F-11D2-BA4B-00A0C93EC93B
+  (was a literal placeholder) + explicit portable sfdisk lines.
+- Fix stack buffer overflow in update-check error path (bound is
+  now the 128-byte stack buffer, not the caller's errcap).
+- Fix CLI-only link failure: gui stub always compiles.
+- Portable tool lookup: bare names resolved via PATH instead of
+  hardcoded /usr/bin (Debian/Ubuntu keep mkfs.* in /usr/sbin).
+- CI: install ntfs-3g for the NTFS format test.
+
+## v1.0.2
+
+- GUI polish: portal-native file pickers (GtkFileDialog opens the
+  system file manager), theme inheritance (flag > rufux config >
+  GTK settings > COSMIC dark default), log timestamps, app icon
+  installed; dconf silenced for root sessions.
+
+## v1.0.1
+
+- Rename: Lufus → Rufux. The name Lufus belongs to the established
+  Hogjects/Lufus project (Python, MIT); this port rebrands to avoid
+  confusion. Binary, app ID, locales, docs, and packaging all renamed.
+  No functional changes.
+
+## v1.0.0 (Phase 3 — Stable)
+
+- udisks2 auto-mount: `mount` / `umount`, `create --mode extract` end-to-end on disks
+- Privilege guard: clear sudo/pkexec error + polkit policy installed
+- Secure Boot: `secureboot-status`, `validate-efi` (PE subsystem check)
+- `update-check` against GitHub releases
+- i18n infrastructure (`po/`, fr + es samples, `ENABLE_NLS`)
+- GUI: `--theme system|dark|light`, Secure Boot status line
+- Packaging: `packaging/PKGBUILD`, Flatpak manifest, man page, desktop file
+- CI: `.github/workflows/rufux.yml` (build + ctest + artifact)
+- `tests/HW_MATRIX.md` + `tests/hw_smoke.sh` for manual hardware validation
+
+## v0.3.0 (Phase 2 — Bootable Parity)
+
+- sfdisk partition, mkfs dispatch, ISO extract, syslinux MBR,
+  persistence file, bad-blocks scan, `create` planner, GUI mode/scheme/fs
+
+## v0.2.0 (Phase 1 — Safe Core)
+
+- device scan, ISO probe, SHA-256, safe writer, GTK skeleton, tests
+
+## v0.1.0
+
+- Initial scaffold forked from pbatard/rufus.
