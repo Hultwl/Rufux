@@ -28,7 +28,7 @@ jobs:
     steps:
       - id: check
         run: |
-          if [ -n "${{ secrets.AUR_SSH_PRIVATE_KEY }}" ]; then
+          if [ -n "${{ secrets.AUR_SSH_PRIVATE_KEY }}" ] || [ -n "${{ secrets.AUR }}" ]; then
             echo "have_key=true" >> "$GITHUB_OUTPUT"
           fi
 
@@ -50,7 +50,9 @@ jobs:
       - name: Set up AUR SSH key
         run: |
           install -dm700 /root/.ssh
-          printf '%s\n' "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > /root/.ssh/aur
+          key='${{ secrets.AUR_SSH_PRIVATE_KEY }}'
+          [ -n "$key" ] || key='${{ secrets.AUR }}'
+          printf '%s\n' "$key" > /root/.ssh/aur
           chmod 600 /root/.ssh/aur
           ssh-keyscan -t ed25519 aur.archlinux.org >> /root/.ssh/known_hosts
           printf 'Host aur.archlinux.org\n\tIdentityFile /root/.ssh/aur\n\tIdentitiesOnly yes\n' > /root/.ssh/config
@@ -104,7 +106,9 @@ jobs:
       - name: Set up AUR SSH key
         run: |
           install -dm700 /root/.ssh
-          printf '%s\n' "${{ secrets.AUR_SSH_PRIVATE_KEY }}" > /root/.ssh/aur
+          key='${{ secrets.AUR_SSH_PRIVATE_KEY }}'
+          [ -n "$key" ] || key='${{ secrets.AUR }}'
+          printf '%s\n' "$key" > /root/.ssh/aur
           chmod 600 /root/.ssh/aur
           ssh-keyscan -t ed25519 aur.archlinux.org >> /root/.ssh/known_hosts
           printf 'Host aur.archlinux.org\n\tIdentityFile /root/.ssh/aur\n\tIdentitiesOnly yes\n' > /root/.ssh/config
