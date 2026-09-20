@@ -29,7 +29,7 @@ jobs:
         run: |
           DESTDIR="$PWD/dist" cmake --install build
           tar -czf rufux-ubuntu.tar.gz -C dist .
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: rufux-ubuntu
           path: rufux-ubuntu.tar.gz
