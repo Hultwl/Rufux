@@ -607,8 +607,9 @@ class MainWindow : public QWidget {
     log("Using image: " + r.path + " (" + humanSize(r.ok ? r.info.size_bytes : QFileInfo(r.path).size()) + ")");
     if (isoWindows) {
       imageCombo->setCurrentIndex(2);
-      fsCombo->setCurrentIndex(1);  // NTFS
-      log("Windows installation media detected.");
+      fsCombo->setCurrentIndex(1);      // NTFS
+      schemeCombo->setCurrentIndex(1);  // MBR: Windows Setup reads it on more USB sticks than GPT
+      log("Windows installation media detected. MBR selected: it works on more USB sticks than GPT and still boots UEFI machines.");
     } else {
       imageCombo->setCurrentIndex(r.ok && r.info.bootable ? 0 : (r.ok ? 1 : 0));
       fsCombo->setCurrentIndex(0);

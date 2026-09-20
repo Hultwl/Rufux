@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.6.2 (MBR is the default for Windows media)
+
+- On a laptop where the installer booted fine, Windows PE showed the stick as
+  a removable volume with "No Media" and 0 B: it could not find any
+  partition. Ventoy (MBR) worked on the same stick, Rufux (GPT) did not.
+  Windows media now defaults to an **MBR** partition table, in the GUI and on
+  the command line (`--scheme gpt` still works). The NTFS layout keeps its
+  1 MiB UEFI:NTFS partition (type EF), so UEFI machines boot it as before.
+  GPT puts a backup header in the last sector of the stick, which some USB
+  sticks cannot read.
+
 ## 1.6.1 (NTFS volume must fit its partition)
 
 - **Another cause of "a media driver is missing" fixed.** Right after
