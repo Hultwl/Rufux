@@ -47,27 +47,39 @@ jobs:
         # AppDir/usr/share/syslinux (boot.c/partition.c resolve it
         # exe-relative); payloads and locales are already installed
         # there by cmake, resolved the same way (wininstall.c, i18n.h).
-        # udevadm/partprobe stay host-side: one is systemd itself, the
-        # other is an opportunistic refresh, both guarded by rufux_have.
+        # udevadm stays host-side (it is systemd itself, guarded by
+        # rufux_have); grub too (module tree too big). mtools, gawk,
+        # xorriso are unused at runtime.
         run: |
-          TOOLS="mkfs.vfat mkfs.ntfs ntfsfix mkfs.exfat mkfs.ext4 mkfs.udf sfdisk partprobe bsdtar wimlib-imagex hivexsh hivexget syslinux udisksctl curl"
-          : > "$GITHUB_WORKSPACE/.rufux-tools"
-          for t in $TOOLS; do
-            p="$(command -v "$t")" || { echo "missing tool: $t"; exit 1; }
-            echo "-e $p" >> "$GITHUB_WORKSPACE/.rufux-tools"
-          done
-          # 7z is a wrapper script on Debian/Ubuntu and linuxdeploy -e
-          # only accepts ELF binaries: find the real backend behind it
-          # (7zz/7za/7zr) and link it as 7z, the name Rufux looks for.
-          seven=""
-          for c in 7zz 7za 7zr; do
-            if p="$(command -v "$c" 2>/dev/null)"; then seven="$p"; break; fi
-          done
-          [ -n "$seven" ] || { echo "no 7-Zip backend found"; exit 1; }
-          echo "-e $seven" >> "$GITHUB_WORKSPACE/.rufux-tools"
+          # Deploy one tool: resolve symlinks (mkfs.vfat -> mkfs.fat),
+          # require ELF (wrapper scripts killed two CI runs already),
+          # and re-link the name Rufux looks up.
           mkdir -p AppDir/usr/bin
-          ln -sf "$(basename "$seven")" AppDir/usr/bin/7z
-          echo "7z -> $seven"
+          deploy_tool() {
+            name="$1"; shift
+            for c in "$@"; do
+              case "$c" in
+                */*) [ -x "$c" ] && p="$c" || continue ;;
+                *) p="$(command -v "$c" 2>/dev/null)" || continue ;;
+              esac
+              p="$(readlink -f "$p")"
+              if [ "$(head -c 4 "$p" | od -An -tx1 | tr -d ' \n')" = "7f454c46" ]; then
+                echo "-e $p" >> "$GITHUB_WORKSPACE/.rufux-tools"
+                base="$(basename "$p")"
+                [ "$base" = "$name" ] || ln -sf "$base" "AppDir/usr/bin/$name"
+                echo "$name -> $p"
+                return 0
+              fi
+            done
+            echo "no ELF binary for: $name ($*)"; exit 1
+          }
+          : > "$GITHUB_WORKSPACE/.rufux-tools"
+          for t in mkfs.vfat mkfs.ntfs ntfsfix mkfs.exfat mkfs.ext4 mkfs.udf sfdisk partprobe bsdtar wimlib-imagex hivexsh syslinux udisksctl curl; do
+            deploy_tool "$t" "$t"
+          done
+          # 7z is a wrapper script on Debian/Ubuntu (and Arch): deploy
+          # the real backend behind it.
+          deploy_tool 7z 7zz 7za 7zr /usr/lib/7zip/7z
           mkdir -p AppDir/usr/share/syslinux
           cp /usr/lib/syslinux/mbr/*.bin AppDir/usr/share/syslinux/
           ls AppDir/usr/share/syslinux/
@@ -101,7 +113,7 @@ jobs:
         # Every helper must have landed in AppDir/usr/bin with
         # resolvable libraries, plus the syslinux MBR data.
         run: |
-          for t in mkfs.vfat mkfs.ntfs ntfsfix mkfs.exfat mkfs.ext4 mkfs.udf sfdisk partprobe bsdtar 7z wimlib-imagex hivexsh hivexget syslinux udisksctl curl; do
+          for t in mkfs.vfat mkfs.ntfs ntfsfix mkfs.exfat mkfs.ext4 mkfs.udf sfdisk partprobe bsdtar 7z wimlib-imagex hivexsh syslinux udisksctl curl; do
             [ -x "AppDir/usr/bin/$t" ] || { echo "not bundled: $t"; exit 1; }
           done
           [ -f AppDir/usr/share/syslinux/mbr.bin ] || { echo "mbr.bin missing"; exit 1; }

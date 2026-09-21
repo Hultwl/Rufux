@@ -625,7 +625,10 @@ static void say(RufuxWueLog log, void *lu, const char *m) { if (log) log(m, lu);
 // answer-file route). The stick is never left half-modified: wimlib replaces
 // the archive atomically and the result is read back.
 static int patch_boot_wim(const char *root, RufuxWueLog log, void *lu) {
-  if (!rufux_have("wimlib-imagex") || !rufux_have("hivexsh") || !rufux_have("hivexget")) {
+  // hivexget is a Perl script (not bundlable); hivexsh is ELF and already
+  // required for the edit, so it does the read-back too: `lsval KEY`
+  // prints the bare decimal value and exits nonzero on a missing key.
+  if (!rufux_have("wimlib-imagex") || !rufux_have("hivexsh")) {
     say(log, lu, "wimlib-imagex/hivex not installed: using the answer-file fallback for the Secure Boot/TPM/RAM bypass.");
     return 1;
   }
@@ -666,7 +669,13 @@ static int patch_boot_wim(const char *root, RufuxWueLog log, void *lu) {
     if (rufux_run(ex2, 0) != 0) break;
     char hive2[1300], out[64] = {0};
     snprintf(hive2, sizeof hive2, "%s/SYSTEM", chk);
-    const char *g[] = {"hivexget", hive2, "\\Setup\\LabConfig", "BypassSecureBootCheck", NULL};
+    char vs[1200];
+    snprintf(vs, sizeof vs, "%s/verify.hsh", dir);
+    FILE *vf = fopen(vs, "w");
+    if (!vf) break;
+    fputs("cd Setup\\LabConfig\nlsval BypassSecureBootCheck\n", vf);
+    fclose(vf);
+    const char *g[] = {"hivexsh", "-f", vs, hive2, NULL};
     if (rufux_capture(g, out, sizeof out) != 0 || atoi(out) != 1) {
       say(log, lu, "Registry change did not verify after writing boot.wim.");
       break;
