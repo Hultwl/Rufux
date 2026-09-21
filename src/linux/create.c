@@ -594,18 +594,18 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
              "steps:\n  1. partition %s %s: %s\n"
              "  2. %s\n"
              "  3. mount partition 1, extract %s%s\n"
-             "  4. Windows customization (%s%s%s)\n  5. verify the copied Windows tree%s",
+             "  4. Windows customization (%s)\n  5. verify the copied Windows tree%s",
              dst, gpt ? "gpt" : "dos",
              fat ? "one FAT32 partition" : "NTFS data partition first, 1 MiB UEFI:NTFS last",
              fat ? "format partition 1 as FAT32" : "write UEFI:NTFS image to partition 2 (raw), format partition 1 as NTFS",
              src, fat ? " (install.wim split with wimlib if over 4 GiB)" : "",
-             o->wue ? o->wue : "none", o->drivers ? ", drivers from " : "", o->drivers ? o->drivers : "",
+             o->wue ? o->wue : "none",
              gpt ? "" : "\n  (MBR table: UEFI boot only, no legacy BIOS boot code)");
     log(m, luser);
     return 0;
   }
   {
-    RufuxWueArgs chk = {o->wue, o->drivers, o->locale, o->keyboard, o->timezone};
+    RufuxWueArgs chk = {o->wue, o->locale, o->keyboard, o->timezone};
     if (rufux_windows_check(&chk, err, cap) != 0) return -1;  // before touching the disk
   }
   if (!fat && p2_of(p1, p2, sizeof p2) != 0) {
@@ -651,8 +651,8 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
                                         prog ? (RufuxExtractProgress)mapped : NULL, &em,
                                         err, cap) != 0)
     rc = -1;
-  if (!rc && ((o->wue && strcmp(o->wue, "none")) || (o->drivers && o->drivers[0]))) {
-    RufuxWueArgs wa = {o->wue, o->drivers, o->locale, o->keyboard, o->timezone};
+  if (!rc && (o->wue && strcmp(o->wue, "none"))) {
+    RufuxWueArgs wa = {o->wue, o->locale, o->keyboard, o->timezone};
     if (rufux_windows_customize(mnt, &wa, log, luser, err, cap) != 0) rc = -1;
   }
   stage(prog, puser, 88);

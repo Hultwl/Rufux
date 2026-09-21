@@ -1,6 +1,6 @@
 #!/bin/bash
 # Windows User Experience: registry bypass inside boot.wim, answer-file
-# placement, driver injection, and the fallback when wimlib fails.
+# placement, the other options, and the fallback when wimlib fails.
 # Needs root, loop devices, sfdisk, mkfs.ntfs, ntfs-3g, 7z, genisoimage,
 # wimlib-imagex, hivexsh, hivexget, python3.  Exit 77 = skipped.
 R=$1; HERE=$(cd "$(dirname "$0")" && pwd)
@@ -13,8 +13,7 @@ cleanup() { umount $T/m 2>/dev/null; losetup -D 2>/dev/null; rm -rf $T; }
 trap cleanup EXIT
 export PATH=$HERE/shims:$PATH RUFUX_SHIM_MNT=$T/shim
 "$HERE/make_fake_winiso.sh" $T/w.iso 6 || exit 77
-mkdir -p $T/drv/net $T/m
-echo "[Version]" > $T/drv/iaStorVD.inf; echo x > $T/drv/iaStorVD.sys; echo "[Version]" > $T/drv/net/e1d.inf
+mkdir -p $T/m
 fail=0; bad() { echo "FAIL $*"; fail=1; }
 
 burn() {  # burn ARGS...   (fresh 1 GiB disk each time)
@@ -29,7 +28,7 @@ hive_val() {  # hive_val WIM INDEX  -> LabConfig BypassTPMCheck value or empty
 }
 
 # 1. everything on, wimlib + hivex available: the "under the hood" path
-if burn --wue bypass,nro,privacy --drivers $T/drv; then
+if burn --wue bypass,nro,privacy; then
   mount -t ntfs-3g ${L}p1 $T/m || bad "cannot mount"
   [ ! -e $T/m/autounattend.xml ] || bad "root autounattend.xml exists (bypass should be in boot.wim)"
   P=$T/m/sources/'$OEM$'/'$$'/Panther/unattend.xml
@@ -40,7 +39,6 @@ if burn --wue bypass,nro,privacy --drivers $T/drv; then
   [ "$(hive_val $T/m/sources/boot.wim 2)" = 1 ] || bad "boot.wim image 2 lacks LabConfig\\BypassTPMCheck=1"
   [ -z "$(hive_val $T/m/sources/boot.wim 1)" ] || bad "boot.wim image 1 was modified"
   wimlib-imagex verify $T/m/sources/boot.wim >/dev/null 2>&1 || bad "boot.wim no longer verifies"
-  [ -f $T/m/'$WinPEDriver$'/iaStorVD.inf ] && [ -f $T/m/'$WinPEDriver$'/net/e1d.inf ] || bad "drivers not copied to \$WinPEDriver\$"
   umount $T/m
   echo "ok under-the-hood"
 else bad "burn (all options)"; tail -4 $T/log; fi
@@ -51,6 +49,8 @@ if PATH=$T/badbin:$PATH burn --wue bypass; then
   mount -t ntfs-3g ${L}p1 $T/m || bad "cannot mount (fallback)"
   grep -q "BypassSecureBootCheck" $T/m/autounattend.xml 2>/dev/null || bad "fallback: no autounattend.xml with the bypass"
   grep -q 'pass="windowsPE"' $T/m/autounattend.xml 2>/dev/null || bad "fallback: no windowsPE pass"
+  grep -q "BypassTPMCheck" $T/m/autounattend.xml && grep -q "BypassRAMCheck" $T/m/autounattend.xml || bad "fallback: TPM/RAM values missing"
+  grep -qE "BypassCPUCheck|BypassStorageCheck" $T/m/autounattend.xml && bad "fallback: writes bypass values Rufus does not have"
   umount $T/m
   grep -q "fallback" $T/log || bad "fallback was not reported in the log"
   echo "ok fallback"
@@ -65,12 +65,7 @@ if burn --wue nro; then
   umount $T/m; echo "ok nro-only"
 else bad "burn (nro)"; fi
 
-# 4. --drivers must be a folder that really holds drivers
-mkdir -p $T/empty
-burn --wue none --drivers $T/empty && bad "empty drivers folder accepted"
-[ -z "$(sfdisk -d ${L} 2>/dev/null | grep "^${L}p")" ] || bad "disk was partitioned before the drivers error"
-grep -q "no .inf driver files" $T/log || bad "no clear error for an empty drivers folder"
-echo "ok drivers-validation"
+
 # 5. local account, regional options, BitLocker, QoL: contents and well-formedness
 if burn --wue bypass,nro,privacy,bitlocker,qol,locale,user=Hus:sein --locale ar-EG --keyboard 0401:00000401 --timezone Africa/Cairo; then
   mount -t ntfs-3g ${L}p1 $T/m || bad "cannot mount (options)"

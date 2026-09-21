@@ -46,7 +46,7 @@ static void usage(const char *p) {
          "  %s secureboot-status\n"
          "  %s validate-efi FILE\n"
          "  %s update-check\n"
-         "  %s create SRC|none DST --mode dd|extract|format|dos|windows [--scheme gpt|dos] [--fs vfat|ntfs|exfat|ext4|udf] [--label L] [--persist-mb N] [--cluster-sectors N] [--badblock-passes N] [--wue bypass,nro,privacy,bitlocker,locale,qol,user=NAME,all,none] [--drivers DIR] [--split-wim MB] [--locale TAG] [--keyboard KLID] [--timezone ZONE] [--quick|--full] [--no-autorun] [--uefi-validate] [--dry-run|--real] [--allow-file] [--allow-fixed] [--yes] [--verify]\n"
+         "  %s create SRC|none DST --mode dd|extract|format|dos|windows [--scheme gpt|dos] [--fs vfat|ntfs|exfat|ext4|udf] [--label L] [--persist-mb N] [--cluster-sectors N] [--badblock-passes N] [--wue bypass,nro,privacy,bitlocker,locale,qol,user=NAME,all,none] [--split-wim MB] [--locale TAG] [--keyboard KLID] [--timezone ZONE] [--quick|--full] [--no-autorun] [--uefi-validate] [--dry-run|--real] [--allow-file] [--allow-fixed] [--yes] [--verify]\n"
          "  %s download-windows\n"
          "  %s --gui [--theme system|dark|light]\n",
          RUFUX_VERSION, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p);
@@ -377,10 +377,10 @@ int main(int argc, char **argv) {
     RufuxCreateOpts o;
     rufux_create_defaults(&o);
     if (!strcmp(src, "none")) src = NULL;
-    int fs_given = 0, scheme_given = 0;
+    int fs_given = 0;
     for (int i = 4; i < argc; i++) {
       if (!strcmp(argv[i], "--mode") && i + 1 < argc) o.mode = argv[++i];
-      else if (!strcmp(argv[i], "--scheme") && i + 1 < argc) { o.scheme = argv[++i]; scheme_given = 1; }
+      else if (!strcmp(argv[i], "--scheme") && i + 1 < argc) o.scheme = argv[++i];
       else if (!strcmp(argv[i], "--fs") && i + 1 < argc) { o.fs = argv[++i]; fs_given = 1; }
       else if (!strcmp(argv[i], "--label") && i + 1 < argc) o.label = argv[++i];
       else if (!strcmp(argv[i], "--persist-mb") && i + 1 < argc) o.persist_mb = strtoul(argv[++i], NULL, 10);
@@ -397,7 +397,6 @@ int main(int argc, char **argv) {
       else if (!strcmp(argv[i], "--no-autorun")) o.extended_label = 0;
       else if (!strcmp(argv[i], "--uefi-validate")) o.uefi_validate = 1;
       else if (!strcmp(argv[i], "--wue") && i + 1 < argc) o.wue = argv[++i];
-      else if (!strcmp(argv[i], "--drivers") && i + 1 < argc) o.drivers = argv[++i];
       else if (!strcmp(argv[i], "--split-wim") && i + 1 < argc) o.split_wim_mb = (unsigned)atoi(argv[++i]);
       else if (!strcmp(argv[i], "--locale") && i + 1 < argc) o.locale = argv[++i];
       else if (!strcmp(argv[i], "--keyboard") && i + 1 < argc) o.keyboard = argv[++i];
@@ -405,9 +404,6 @@ int main(int argc, char **argv) {
     }
     // Windows media keeps NTFS (+ UEFI:NTFS) as its default; FAT32 is opt-in with --fs vfat.
     if (!strcmp(o.mode, "windows") && !fs_given) o.fs = "ntfs";
-    // MBR is the default for Windows media: it works on sticks that Windows PE cannot read with GPT
-    // (Ventoy uses MBR too), and still boots UEFI machines through the UEFI:NTFS / FAT32 partition.
-    if (!strcmp(o.mode, "windows") && !scheme_given) o.scheme = "dos";
     if ((!strcmp(o.mode, "dd") || !strcmp(o.mode, "extract") || !strcmp(o.mode, "windows")) && !src) {
       fprintf(stderr, "create: --mode %s needs an image (use 'none' only with --mode format|dos)\n", o.mode);
       return 2;

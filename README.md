@@ -26,78 +26,42 @@
 
 ---
 
-Rufux is a Linux port of [Rufus](https://github.com/pbatard/rufus). It
-burns ISOs to USB sticks, and unlike `dd` it can also partition, format,
-extract, verify, and build Windows install media.
+Rufux is a port of [Rufus](https://github.com/pbatard/rufus) to Linux. It does
+the same job: pick a drive, pick an ISO, press START. I wrote it because I
+kept wanting Rufus on my Linux machine and `dd` was not enough for Windows
+install media.
 
-The interface is Qt6. Most of the code was written with the help of an AI
-assistant and then tested on real sticks. It is young software: read the
-limits below before trusting it with anything you care about, and try
-`--dry-run` first.
+The window is a copy of Rufus's main window (same sections, same wording),
+drawn with your desktop's own widget style and file dialogs.
 
 ## What it does
 
-- **Write an image** in raw mode (`dd`-style, with read-back verification)
-  or in file mode (partition, format, extract the ISO, install a
-  bootloader).
-- **Windows install media**, laid out like Rufus does it: either NTFS plus
-  a 1 MiB UEFI:NTFS partition (any image size), or one FAT32 partition
-  (Secure Boot friendly, `install.wim` split when needed). Rufus's Windows
-  options are there too: skip the hardware checks, local account,
-  regional options, no BitLocker, no data collection, and more.
-- **FreeDOS sticks** with real DOS boot records.
-- **Extras:** MD5/SHA-1/SHA-256/SHA-512 checksums, fixed VHD images,
-  persistence partitions, bad-block scans, Secure Boot status.
-- **Safety:** commands only print a plan unless you pass `--real --yes`
-  and run as root. Fixed disks, mounted targets, and a target equal to
-  the source are refused.
+- **Disk or ISO image.** Write an image in DD mode, or in ISO mode (partition,
+  format, copy the files, make it bootable). Like Rufus, it asks which mode to
+  use when an image is an ISOHybrid.
+- **Windows install media.** NTFS with a small UEFI:NTFS partition (any image
+  size), or FAT32 (Secure Boot friendly, `install.wim` is split when it is
+  over 4 GiB). GPT or MBR. The "Windows User Experience" options are the ones
+  Rufus has: skip the RAM/Secure Boot/TPM checks, skip the online account,
+  create a local account, copy your regional options, skip the privacy
+  questions, no BitLocker auto-encryption, and the QoL tweaks.
+- **FreeDOS** sticks, **non bootable** drives, persistence for Linux live
+  images, bad-block checks, checksums (MD5, SHA-1, SHA-256, SHA-512).
+- **Safety.** The command line only prints a plan unless you pass
+  `--real --yes` and run as root. Fixed disks are hidden unless you tick
+  "List USB Hard Drives".
 
-## Limits you should know about
+## Limits
 
-- Windows sticks made in file mode boot on **UEFI** machines only. Legacy
-  BIOS boot from NTFS needs a Windows-written boot loader that Linux
-  formatting tools don't produce.
-- The NTFS path was reworked in 1.6.0 after Windows Setup reported a
-  missing media driver: the volume was being written without disk
-  geometry, and old filesystem signatures survived repartitioning. The
-  fixes are verified against the formatting tools, not against a real
-  Windows install. If Setup still cannot find the drive, open an issue
-  with the log.
-- Not supported: ReFS, the built-in Windows ISO downloader, Windows To Go.
-  [PORTING.md](PORTING.md) explains each.
-
-## When Windows Setup cannot find something
-
-There are two different errors that both end on "Install driver to show
-hardware", and they need different fixes.
-
-**"A media driver your computer needs is missing"** means Setup cannot see
-the USB stick itself, so it cannot find the install files.
-1. Use a plain USB-A port, ideally USB 2.0. Avoid USB-C/Thunderbolt ports,
-   hubs and adapters. Windows PE lacks drivers for some of these, and a
-   stick that boots fine can then disappear once Windows takes over.
-2. At the error, press Shift+F10, type `diskpart`, then `list disk`. Your
-   stick should be listed. (`list volume` also shows an empty card-reader
-   slot as "Removable, 0 B, No Media"; that is not your stick.)
-3. If the disk is listed but "Offline": `select disk N`, `online disk`.
-4. Write the same ISO again with the **FAT32** file system and try again.
-   If the FAT32 stick is found and the NTFS one is not, the layout was the
-   problem; if neither is found, it is the port or the USB controller.
-5. Still nothing: add the chipset/USB controller driver of your laptop
-   with `--drivers` (below), or try another stick or port.
-
-**No drives listed at "Where do you want to install Windows?"** means Setup
-cannot see the internal disk, common with Intel RST/VMD (RAID) mode.
-1. In the firmware settings switch the storage mode from "RAID / Intel
-   RST" to **AHCI**, install, and switch back if you need it.
-2. Or download the storage driver from your laptop maker ("Intel Rapid
-   Storage Technology" or "VMD", F6 version), unzip it, and pass the folder:
-   `rufux create Win11.iso /dev/sdX --mode windows --drivers ~/vmd --real --yes`
-   (or the drivers folder in the GUI's Windows options).
+- Windows sticks made with NTFS boot on UEFI machines only. Legacy BIOS boot
+  from NTFS needs a boot loader that Linux formatting tools do not write.
+- FAT32 Windows sticks also have no legacy BIOS boot code yet.
+- Not there: ReFS, downloading Windows ISOs, Windows To Go, the language
+  button. See [PORTING.md](PORTING.md).
 
 ## Install
 
-**AppImage:** download it from the
+**AppImage:** get it from the
 [latest release](https://github.com/Hultwl/Rufux/releases/latest), then
 `chmod +x Rufux-x86_64.AppImage` and run it.
 
@@ -112,50 +76,45 @@ ctest --test-dir build
 sudo cmake --install build
 ```
 
-Building needs Qt6 Widgets; without it you get a command-line-only binary.
-At runtime the host needs `dosfstools`, `ntfs-3g`/`ntfsprogs`,
-`exfatprogs`, `e2fsprogs`, `util-linux`, `syslinux`, `udisks2`, and
-`p7zip` or `libarchive`. Splitting a large `install.wim` for FAT32 needs
-`wimlib` (wimlib-imagex), and the Windows 11 checks bypass also needs
-`hivex`. [packaging/README.md](packaging/README.md) has the full list per
-distribution. Some tests skip themselves when a tool or root access is
-missing, and the DOS boot-record test needs `gawk`.
+Build needs Qt6 (Widgets, Concurrent), OpenSSL and CMake. At run time it uses
+`dosfstools`, `ntfs-3g`, `exfatprogs`, `e2fsprogs`, `util-linux`, `udisks2`,
+`polkit` and `p7zip`. For the Windows 11 checks bypass and FAT32 with a large
+`install.wim` you also want `wimlib` and `hivex`. Package names per
+distribution are in [packaging/README.md](packaging/README.md). Some tests skip
+themselves when a tool or root access is missing.
 
-## Usage
+## Command line
 
 ```sh
-rufux list                                   # removable drives
-rufux probe image.iso --detail               # label, size, bootable?
-rufux write image.iso /dev/sdX --dry-run     # show the plan
+rufux list                                    # removable drives
+rufux probe image.iso --detail                # label, size, bootable?
+rufux write image.iso /dev/sdX --dry-run      # show the plan
 sudo rufux write image.iso /dev/sdX --real --verify --yes
 
-# Windows install media, with the Windows 11 checks disabled:
-sudo rufux create Win11.iso /dev/sdX --mode windows --scheme gpt \
-     --wue bypass --real --yes
+# Windows install media (GPT, NTFS, skip the hardware checks):
+sudo rufux create Win11.iso /dev/sdX --mode windows --wue bypass --real --yes
 
-# The same as FAT32 (install.wim is split if needed), with a local account:
+# FAT32 instead, with a local account:
 sudo rufux create Win11.iso /dev/sdX --mode windows --fs vfat \
      --wue bypass,nro,user=Sam --real --yes
 
-rufux --gui                                  # graphical interface
+rufux --gui [image.iso]                       # the window
 ```
 
-Run `rufux` with no arguments for every option, or `man rufux` after
-installing.
+Run `rufux` with no arguments for every option, or `man rufux`.
 
 ## More
 
-- [PORTING.md](PORTING.md): what was kept from Rufus, what was rewritten
-- [CHANGELOG.md](CHANGELOG.md): release notes
-- [docs/TODO.md](docs/TODO.md): known problems and planned work
-- [tests/HW_MATRIX.md](tests/HW_MATRIX.md): hardware test checklist
+- [PORTING.md](PORTING.md): what comes from Rufus and what is different
+- [CHANGELOG.md](CHANGELOG.md)
+- [docs/TODO.md](docs/TODO.md)
+- [tests/HW_MATRIX.md](tests/HW_MATRIX.md): what I have tried on real drives
 
-Bug reports with the log attached help most: press Log in the window and
-then Save log.
+Bug reports help most with the log attached (Log button, then Save).
 
-## Origin and license
+## Credits and license
 
 Port of [pbatard/rufus](https://github.com/pbatard/rufus) by Pete Batard.
-GPLv3, like upstream. Formerly called Lufus; renamed to avoid confusion
-with [Hogjects/Lufus](https://github.com/Hogjects/Lufus), an unrelated
-project.
+GPLv3, like upstream. It used to be called Lufus; I renamed it to avoid
+confusion with [Hogjects/Lufus](https://github.com/Hogjects/Lufus), which is
+an unrelated project.

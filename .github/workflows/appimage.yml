@@ -19,7 +19,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq cmake gcc pkg-config file wget \
-            qt6-base-dev qt6-wayland libudev-dev libblkid-dev libssl-dev gettext curl \
+            qt6-base-dev qt6-wayland qt6-xdgdesktopportal-platformtheme libudev-dev libblkid-dev libssl-dev gettext curl \
             util-linux dosfstools exfatprogs e2fsprogs mtools ntfs-3g \
             syslinux libarchive-tools p7zip-full xorriso udisks2 \
             wimtools libhivex-bin gawk genisoimage python3 xvfb
@@ -47,6 +47,7 @@ jobs:
           QMAKE: /usr/lib/qt6/bin/qmake
           # GitHub runners have no FUSE: let linuxdeploy run its plugin AppImage extracted.
           APPIMAGE_EXTRACT_AND_RUN: 1
+          DEPLOY_PLATFORM_THEMES: 1
           EXTRA_PLATFORM_PLUGINS: libqwayland-generic.so
         run: |
           ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \

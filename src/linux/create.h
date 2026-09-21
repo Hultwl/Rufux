@@ -13,7 +13,6 @@ typedef struct {
   const char *fs; // vfat|ntfs|exfat|ext4|udf
   const char *label; // may be NULL
   const char *wue; // windows mode: comma list bypass,nro,privacy,all,none (NULL = nothing)
-  const char *drivers; // windows mode: folder copied to $WinPEDriver$ (NULL = none)
   unsigned split_wim_mb; // windows mode: split install.wim into parts of this many MiB (0 = only when needed for FAT32)
   const char *locale, *keyboard, *timezone; // windows mode: values for the "locale" wue item
   unsigned long persist_mb;

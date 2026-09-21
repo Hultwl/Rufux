@@ -1,18 +1,26 @@
 # Changelog
 
-## 1.6.4 (the real cause of "a media driver is missing")
+## 1.7
 
-- **Fixed: GPT sticks had an invalid partition type.** Since 1.2.4 the data
-  partition was typed `EBD0A0A2-B938-11D2-B3FA-00A0C93EC93B`, which is not a
-  real GUID (a mix of two others). The Microsoft basic data type is
-  `EBD0A0A2-B9E5-4433-87C0-68B6B72699C7`. sfdisk labelled the partition
-  `unknown`, and Windows ignores partitions of an unknown type, so Windows PE
-  saw the stick as an online GPT disk with no volume at all. Setup then
-  reported a missing media driver. Found by booting a Rufux stick in QEMU:
-  `list disk` showed the disk, `list volume` showed no volume from it.
-  MBR sticks and Ventoy were never affected.
-- The layout and extract tests now check the exact GUID and that sfdisk does
-  not report an unknown type.
+- The window is now a copy of Rufus's main window: same sections, wording and
+  order. It uses the desktop's own widget style, icons and file dialogs, and has
+  normal window controls (the AppImage uses the desktop file chooser through
+  the portal).
+- The Windows options dialog is Rufus's: RAM/Secure Boot/TPM, online account,
+  local account, regional options, data collection, BitLocker, QoL tweaks.
+- Removed what Rufus does not have: the drivers folder option, the extra
+  `BypassCPUCheck` and `BypassStorageCheck` values, the theme setting, the
+  eject and checksum-compare extras, and the "no media" hints.
+- Windows media is GPT again by default.
+- Rufux refuses to finish a GPT write if `sfdisk` cannot name a partition type.
+- Like Rufus, ISOHybrid images ask for ISO or DD mode when you press START.
+
+## 1.6.4
+
+- Fixed the partition type of GPT sticks. Rufux wrote a data partition type
+  that is not a real GUID, `sfdisk` called it "unknown", and Windows ignores
+  such partitions, so Setup saw the drive but no volume on it. It now uses
+  `EBD0A0A2-B9E5-4433-87C0-68B6B72699C7`, the Microsoft basic data type.
 
 ## 1.6.3 (real MBR bootstrap code, not zeroed)
 
@@ -36,29 +44,15 @@
   cannot be why an initial UEFI boot fails, but it closes a real, verified
   structural gap between Rufux's MBR output and every other tool's.
 
-## 1.6.2 (MBR is the default for Windows media)
+## 1.6.2
 
-- On a laptop where the installer booted fine, Windows PE showed the stick as
-  a removable volume with "No Media" and 0 B: it could not find any
-  partition. Ventoy (MBR) worked on the same stick, Rufux (GPT) did not.
-  Windows media now defaults to an **MBR** partition table, in the GUI and on
-  the command line (`--scheme gpt` still works). The NTFS layout keeps its
-  1 MiB UEFI:NTFS partition (type EF), so UEFI machines boot it as before.
-  GPT puts a backup header in the last sector of the stick, which some USB
-  sticks cannot read.
+- Windows media defaulted to MBR (reverted in 1.7).
 
-## 1.6.1 (NTFS volume must fit its partition)
+## 1.6.1
 
-- **Another cause of "a media driver is missing" fixed.** Right after
-  partitioning, the kernel can still report the old partition size, and
-  `mkfs.ntfs` then wrote a volume larger than its partition (one boot sector
-  claimed 31.1 M sectors on a 30.3 M sector disk). UEFI:NTFS still boots such
-  a volume, but Windows treats it as corrupt and never mounts it. Rufux now
-  waits until the partition size is consistent with the disk, gives
-  `mkfs.ntfs` the exact sector count, and refuses a finished volume that does
-  not fit its partition. This adds to the boot-sector geometry fix in 1.6.0.
-- tests: the layout test checks the NTFS sector count against the partition;
-  the fake Windows ISO now has sources/setup.exe like a real one.
+- `mkfs.ntfs` waits for a consistent partition size, gets the exact sector
+  count, and the finished volume is checked so it cannot be larger than its
+  partition.
 
 ## 1.6.0 (NTFS Windows media fixes)
 
@@ -115,132 +109,33 @@ The window was rebuilt and a few older annoyances went with it:
 - **The GTK4 window was removed.** Qt6 is the only interface; without it
   the build is command-line only.
 
-## 1.5.0 (FAT32 Windows media, Rufus's Windows options, new window)
+## 1.5.0
 
-- **Windows media on FAT32.** Pick FAT32 for a Windows image and Rufux makes
-  one plain FAT32 partition (no UEFI:NTFS driver, works with Secure Boot).
-  An `install.wim` over 4 GiB is split into `install.swm`, `install2.swm`,
-  ... with wimlib, which Setup reads natively. `--fs vfat` on the command
-  line, `--split-wim MB` to force a split size. NTFS stays the default.
-  This is also a quick test when Windows Setup cannot see a stick: if the
-  FAT32 version is found and the NTFS one is not, the layout is the cause.
-- **The Windows options are now the ones Rufus has**, in the same dialog:
-  create a local account (name prefilled, empty password that must be
-  changed at first logon), copy this computer's regional options (language,
-  keyboard, time zone), disable BitLocker automatic encryption, disable
-  data collection, and a set of "Windows 11 annoyances" switches (Copilot,
-  ads, news, classic context menu, Fast Startup). CLI:
-  `--wue bypass,nro,privacy,bitlocker,locale,qol,user=NAME`, with
-  `--locale`, `--keyboard`, `--timezone`. Options are checked before the
-  drive is touched, so a bad account name fails in a second.
-- The choices you make in that dialog are remembered.
-- **New window details:** modern drop-down lists and check boxes, a
-  Settings window (light/dark/system, eject offer), drag and drop of an
-  image onto the window, `rufux --gui image.iso`, a compare field in the
-  checksum window (paste the published hash: match or not), an "Eject
-  drive" button when the write is done, and the full log inside the error
-  dialog under "Show Details". A note under the file system explains
-  FAT32 versus NTFS for Windows images.
-- After a Windows write, the finish dialog says what to try when Setup
-  reports a missing media driver (USB-A/USB 2.0 port, `diskpart`,
-  `list disk`). README section rewritten to tell the two Setup errors
-  apart: "a media driver is missing" (Setup cannot see the stick) and
-  "no drives found" (it cannot see the internal disk).
-- Changed: `--wue privacy` no longer also disables BitLocker; use the new
-  `bitlocker` item (as in Rufus). `--wue all` includes both.
-- Tests: `test_wue.sh` covers the new options; `test_fat_split.sh` covers
-  the WIM splitting with a real WIM. The FAT32 layout and mount are not
-  covered here because the CI sandbox kernel has no vfat driver.
+- Windows media on FAT32, with `install.wim` split when it is over 4 GiB
+  (`--fs vfat`, `--split-wim MB`).
+- Windows options: local account, regional options, BitLocker, QoL tweaks.
+- Options are checked before the drive is touched.
 
-## 1.4.1 (device list fix, modern look)
+## 1.4.1
 
-- Fixed: a 16 GB stick could show up as `0.00B` and the write then failed
-  with "device too small". Linux lists every card-reader slot as a disk,
-  and an empty slot reports a capacity of 0. Those entries are now hidden
-  (Rufus does the same), and if a zero-capacity target is chosen anyway the
-  error says what it is and what to do, instead of "too small".
-- The size read used by the worker also falls back to sysfs, and its error
-  message now includes the size it saw.
-- New look for the Qt window: soft light and dark themes that follow the
-  system, rounded inputs and buttons, a slim progress bar with a separate
-  status line (green when ready, red when it fails), a quieter section
-  layout, and a red CANCEL while a write runs. Device names read like
-  `SanDisk Ultra (sdb) [14.9 GB]`.
-- `RUFUX_GUI_DEMO=1` adds a fake device to the list, for screenshots.
-- README screenshot updated.
+- Drives that report no capacity (empty card-reader slots) are hidden, and a
+  zero-size target is refused with a clear message.
 
-## 1.4.0 (Windows customization rewritten like Rufus)
+## 1.4.0
 
-- **Secure Boot / TPM / RAM bypass now works under the hood.** The
-  `LabConfig` keys are written into the SYSTEM registry hive inside
-  `sources/boot.wim` (image 2), read back, and checked, exactly as Rufus
-  does. Setup's screens stay untouched. This needs `wimlib-imagex` and
-  `hivexsh`; without them Rufux falls back to an answer file and tells
-  you that the fallback changes Setup's first screens.
-- **The answer file no longer forces Setup into partly unattended mode.**
-  Before, every customization wrote a `windowsPE` pass (with `UserData`),
-  even for "no online account" alone. Rufus documents that such a pass
-  alters the installer's flow. Now the `windowsPE` pass exists only in the
-  fallback. Everything else goes to `sources/$OEM$/$$/Panther/unattend.xml`,
-  where Rufus puts it, and the architecture (amd64, arm64, x86) is taken
-  from the media instead of being hardcoded.
-- **Driver injection: `--drivers DIR`** (and a folder picker in the GUI's
-  Windows options). The folder is copied to `$WinPEDriver$`, which Setup
-  loads automatically. Use it when Setup says a media driver is missing or
-  shows no drives, for example with Intel RST/VMD controllers.
-- New test: tests/test_wue.sh edits a real two-image WIM with a real
-  registry hive and checks the bypass, image 1 untouched, the answer-file
-  placement, the drivers, and the fallback.
+- The RAM/Secure Boot/TPM bypass is written into `boot.wim` like Rufus does;
+  an answer file is only the fallback.
 
-## 1.3.0 (Qt6 interface, extract-mode fix)
+## 1.3.0
 
-- Fixed: `extract` mode (and the "Write in ISO Image mode" option) put
-  the ISO on a 512 MiB partition and left the second one unused, so any
-  ISO over about 500 MB failed with "No space left on device". It now
-  uses one data partition. tests/test_extract_layout.sh covers it with a
-  600 MiB image and fails on the old behaviour.
-- Fixed: single-partition GPT sticks (extract and "Non bootable") were
-  typed as Linux filesystem data even for FAT32/NTFS/exFAT. Windows
-  ignores such partitions, so they got no drive letter. They are now
-  typed Microsoft basic data; only ext* keeps the Linux type.
+- New Qt6 window. `extract` mode now uses one data partition instead of a
+  512 MiB one, and single-partition GPT drives get the Windows data type.
 
-- New Qt6 interface laid out like Rufus: Drive Properties, Format
-  Options and Status sections, a green progress bar, START/CLOSE, a log
-  window with Save, a checksum window (MD5, SHA-1, SHA-256, SHA-512), and
-  the Windows User Experience dialog. It still runs writes in a separate
-  root process (`pkexec rufux create ... --real --yes`).
-- CMake picks Qt6 first, then GTK4, then builds CLI-only. Force one with
-  `-DRUFUX_GUI=qt|gtk|none`. The GTK code is still in the tree.
-- Package dependencies, CI and the AppImage workflow moved from gtk4 to
-  qt6-base (linuxdeploy-plugin-qt).
-- `RUFUX_GUI_SNAPSHOT=out.png rufux --gui` saves a screenshot and exits
-  (`RUFUX_GUI_IMAGE=file.iso` loads an image first); handy for tests.
+## 1.2.7
 
-## 1.2.7 (Windows media layout, mount path fix)
-
-- Windows install sticks now use the layout Rufus uses: the NTFS data
-  partition first, then a 1 MiB UEFI:NTFS partition at the very end.
-  Before, a 512 MiB partition typed "EFI System" came first. Rufus's
-  own source notes that Windows Setup fails with two ESPs and depends on
-  how Windows mounts several partitions on a removable drive; the
-  symptom was a stick that boots and then reports "a media driver your
-  computer needs is missing". The small partition is typed basic data and
-  flagged no-drive-letter. I could not reproduce the Setup error without
-  a Windows ISO and hardware, so please report back whether this fixes it.
-- The UEFI:NTFS image is written raw to its partition and read back, as
-  Rufus does, instead of being unpacked and copied.
-- After extraction the Windows tree is checked (bootmgr, boot.wim,
-  install.wim/esd/swm); a partial copy now fails the burn.
-- Fixed: the mount path reported by udisksctl was cut at the first dot,
-  so a label like "Win11.ISO" made the extraction go to a truncated path.
-- mkfs.ntfs now gets the partition start sector explicitly.
-- The GPT Windows flow no longer needs syslinux.
-- The MBR variant of the Windows flow is UEFI-only, and says so. Booting
-  it on legacy BIOS never worked: the NTFS boot sector jumps into sectors
-  1-15 of $Boot, which mkfs.ntfs leaves empty.
-- New test: tests/test_windows_layout.sh burns a fake Windows ISO onto a
-  loop device and checks the partition table, the UEFI:NTFS image and the
-  copied tree (skipped without root or the needed tools).
+- Windows install media uses Rufus's layout: NTFS first, a 1 MiB UEFI:NTFS
+  partition last. The mount path from `udisksctl` is no longer cut at the
+  first dot.
 
 ## 1.2.6 (mount race + honest failure reasons)
 
@@ -438,4 +333,4 @@ The window was rebuilt and a few older annoyances went with it:
 
 ## v0.1.0
 
-- Initial scaffold forked from pbatard/rufus.
+- Initial scaffold forked from pbatard/rufus.\n

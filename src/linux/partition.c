@@ -218,5 +218,15 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
   }
   if (rc != 0) snprintf(err, cap, "sfdisk failed on '%s'", dst);
   if (rc == 0 && !strcmp(scheme, "dos")) write_mbr_bootcode(dst);
+  if (rc == 0 && !strcmp(scheme, "gpt") && rufux_have("sfdisk")) {
+    // Windows ignores partitions whose type it does not know, so the drive would
+    // look empty to Setup. sfdisk labels such a type "unknown"; never accept that.
+    char out[8192] = {0};
+    const char *sl[] = {"sfdisk", "-l", dst, NULL};
+    if (rufux_capture(sl, out, sizeof out) == 0 && strstr(out, " unknown")) {
+      snprintf(err, cap, "the partition table on '%s' has a partition type Windows would not recognise", dst);
+      return -1;
+    }
+  }
   return rc;
 }
