@@ -31,7 +31,14 @@ jobs:
         # edits, WIM splitting) need root and loop devices, so as a normal user
         # they only skip. Runners allow both; the udisksctl shim stands in for
         # the desktop's udisks daemon.
-        run: sudo env "PATH=$PWD/tests/shims:$PATH" ctest --test-dir build --output-on-failure
+        shell: bash
+        run: |
+          sudo env "PATH=$PWD/tests/shims:$PATH" ctest --test-dir build --output-on-failure | tee ctest-root.log
+          # A test that skips itself still counts as a pass; as root nothing may skip.
+          if grep -qE 'Skipped|Not Run' ctest-root.log; then
+            echo "::error::tests were skipped as root: $(grep -E 'Skipped|Not Run' ctest-root.log | tr -s ' ' | tr '\n' ';')"
+            exit 1
+          fi
       - name: Package (artifact)
         run: |
           DESTDIR="$PWD/dist" cmake --install build
