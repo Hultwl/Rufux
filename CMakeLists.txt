@@ -94,9 +94,9 @@ install(FILES res/linux/io.github.hultwl.rufux.policy DESTINATION share/polkit-1
 # Boot payloads (FreeDOS set, UEFI:NTFS image) resolved at runtime.
 install(DIRECTORY res/freedos DESTINATION share/rufux)
 install(FILES res/uefi/uefi-ntfs.img DESTINATION share/rufux)
-# App icon (upstream Rufus artwork, GPLv3, renamed to our app id)
-foreach(SZ 128 64 32)
-  install(FILES res/icons/rufus-${SZ}.png
+# App icon
+foreach(SZ 512 256 128 64 48 32 16)
+  install(FILES res/icons/rufux-${SZ}.png
     DESTINATION share/icons/hicolor/${SZ}x${SZ}/apps
     RENAME io.github.hultwl.rufux.png)
 endforeach()

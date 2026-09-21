@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/Hultwl/Rufux/main/res/icons/rufus-128.png" width="128" alt="Rufux logo">
+  <img src="https://raw.githubusercontent.com/Hultwl/Rufux/main/res/icons/rufux-128.png" width="128" alt="Rufux logo">
 </p>
 
 <h1 align="center">Rufux</h1>

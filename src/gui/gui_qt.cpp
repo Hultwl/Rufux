@@ -764,6 +764,7 @@ int rufux_gui_run(int argc, char **argv) {
   QApplication app(qargc, keep.data());
   QApplication::setApplicationName("Rufux");
   QApplication::setDesktopFileName("io.github.hultwl.rufux");
+  QApplication::setWindowIcon(QIcon::fromTheme("io.github.hultwl.rufux"));
 
   MainWindow w;
   w.show();
