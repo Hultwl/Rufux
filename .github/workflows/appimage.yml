@@ -50,12 +50,24 @@ jobs:
         # udevadm/partprobe stay host-side: one is systemd itself, the
         # other is an opportunistic refresh, both guarded by rufux_have.
         run: |
-          TOOLS="mkfs.vfat mkfs.ntfs ntfsfix mkfs.exfat mkfs.ext4 mkfs.udf sfdisk partprobe bsdtar 7z wimlib-imagex hivexsh hivexget syslinux udisksctl curl"
+          TOOLS="mkfs.vfat mkfs.ntfs ntfsfix mkfs.exfat mkfs.ext4 mkfs.udf sfdisk partprobe bsdtar wimlib-imagex hivexsh hivexget syslinux udisksctl curl"
           : > "$GITHUB_WORKSPACE/.rufux-tools"
           for t in $TOOLS; do
             p="$(command -v "$t")" || { echo "missing tool: $t"; exit 1; }
             echo "-e $p" >> "$GITHUB_WORKSPACE/.rufux-tools"
           done
+          # 7z is a wrapper script on Debian/Ubuntu and linuxdeploy -e
+          # only accepts ELF binaries: find the real backend behind it
+          # (7zz/7za/7zr) and link it as 7z, the name Rufux looks for.
+          seven=""
+          for c in 7zz 7za 7zr; do
+            if p="$(command -v "$c" 2>/dev/null)"; then seven="$p"; break; fi
+          done
+          [ -n "$seven" ] || { echo "no 7-Zip backend found"; exit 1; }
+          echo "-e $seven" >> "$GITHUB_WORKSPACE/.rufux-tools"
+          mkdir -p AppDir/usr/bin
+          ln -sf "$(basename "$seven")" AppDir/usr/bin/7z
+          echo "7z -> $seven"
           mkdir -p AppDir/usr/share/syslinux
           cp /usr/lib/syslinux/mbr/*.bin AppDir/usr/share/syslinux/
           ls AppDir/usr/share/syslinux/
@@ -96,6 +108,13 @@ jobs:
           [ -f AppDir/usr/share/syslinux/gptmbr.bin ] || { echo "gptmbr.bin missing"; exit 1; }
           missing="$(find AppDir/usr/bin AppDir/usr/lib -type f -executable 2>/dev/null | while read -r f; do ldd "$f" 2>/dev/null; done | grep 'not found' || true)"
           [ -z "$missing" ] || { echo "unresolved libraries:$missing"; exit 1; }
+          # Presence is not enough (a wrapper script passed this once):
+          # execute the key bundled helpers.
+          AppDir/usr/bin/7z i >/dev/null || { echo "bundled 7z broken"; exit 1; }
+          for v in "bsdtar --version" "sfdisk --version" "curl --version" "wimlib-imagex --version"; do
+            # shellcheck disable=SC2086
+            AppDir/usr/bin/$v >/dev/null || { echo "bundled $v broken"; exit 1; }
+          done
           echo "bundled tools OK"
 
       - name: Smoke test the AppImage
