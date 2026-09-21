@@ -116,3 +116,4 @@ add_test(NAME zero_size COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_zero_size.sh
 set_tests_properties(zero_size PROPERTIES SKIP_RETURN_CODE 77)
 add_test(NAME fat_split COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_fat_split.sh $<TARGET_FILE:rufux>)
 set_tests_properties(fat_split PROPERTIES SKIP_RETURN_CODE 77)
+add_test(NAME relocatable COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_relocatable.sh $<TARGET_FILE:rufux>)

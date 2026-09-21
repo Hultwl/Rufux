@@ -12,10 +12,14 @@ chmod +x Rufux-x86_64.AppImage
 ./Rufux-x86_64.AppImage   # opens the GUI; CLI via --help etc.
 ```
 
-Same deal as native: it shells out to host tools for the disk work
-(`dosfstools`, `ntfsprogs`, `exfatprogs`, `e2fsprogs`, `util-linux`,
-`syslinux`, `udisks2`, `libarchive`, `p7zip`), so those need to be
-installed.
+The AppImage ships its own helpers (all `mkfs.*`, `sfdisk`,
+`partprobe`, `bsdtar`, `7z`, `wimlib-imagex`, `hivexsh`, `syslinux`
+plus its MBR data, `udisksctl`, `curl`) bundled under
+`AppDir/usr/bin`, with payloads, locales and MBR data resolved
+exe-relative — see `src/linux/exec.c` (`rufux_exe_dir`) and
+`.github/workflows/appimage.yml` ("Bundle helper tools"). The host
+only needs the `udisks2` daemon running (mounts) and `grub` if you
+use GRUB mode (module tree too big to bundle).
 No Flatpak — sandboxes and raw disks don't mix, tried that, walked away.
 
 ## Arch Linux (AUR)

@@ -28,9 +28,23 @@ static int want_cb(const char *path, const struct stat *sb, int type, struct FTW
 }
 
 static const char *find_mbr_file(const char *base) {
-  static const char *roots[] = {
+  static char relroot[1152];
+  const char *roots[8];
+  int nroots = 0;
+  // Bundled copy first (AppImage: <exedir>/../share/syslinux).
+  const char *ed = rufux_exe_dir();
+  if (ed[0]) {
+    snprintf(relroot, sizeof relroot, "%s/../share/syslinux", ed);
+    struct stat st;
+    if (stat(relroot, &st) == 0 && S_ISDIR(st.st_mode))
+      roots[nroots++] = relroot;
+  }
+  static const char *sysroots[] = {
     "/usr/lib/syslinux", "/usr/share/syslinux",
     "/usr/local/share/syslinux", "/usr/local/lib/syslinux", NULL};
+  for (int i = 0; sysroots[i] && nroots < 7; i++)
+    roots[nroots++] = sysroots[i];
+  roots[nroots] = NULL;
   want_base = base;
   found_path[0] = 0;
   for (int i = 0; roots[i]; i++) {
@@ -43,6 +57,14 @@ static const char *find_mbr_file(const char *base) {
 }
 
 static const char *mbr_path(const char *kind) {
+  // Bundled copy first (AppImage: <exedir>/../share/syslinux).
+  static char rel[1152];
+  const char *base = (kind && !strcmp(kind, "gpt")) ? "gptmbr.bin" : "mbr.bin";
+  const char *ed = rufux_exe_dir();
+  if (ed[0]) {
+    snprintf(rel, sizeof rel, "%s/../share/syslinux/%s", ed, base);
+    if (!access(rel, R_OK)) return rel;
+  }
   // Fast path: known layouts (Arch nests under bios/, Debian flattens).
   static const char *gpt_c[] = {
     "/usr/lib/syslinux/bios/gptmbr.bin",

@@ -25,6 +25,25 @@ int rufux_have(const char *name) {
   return found;
 }
 
+// Directory containing the running executable, via /proc/self/exe.
+// Lets relocatable bundles (AppImage) find data next to the binary:
+// <exedir>/../share/... mirrors a /usr install prefix.
+const char *rufux_exe_dir(void) {
+  static char dir[1024] = {0};
+  static int done = 0;
+  if (!done) {
+    done = 1;
+    ssize_t n = readlink("/proc/self/exe", dir, sizeof dir - 1);
+    if (n > 0) {
+      dir[n] = 0;
+      char *s = strrchr(dir, '/');
+      if (s) *s = 0;
+      else dir[0] = 0;
+    }
+  }
+  return dir;
+}
+
 int rufux_run(const char *const argv[], int dry_run) {
   fprintf(stderr, "+");
   for (int i = 0; argv[i]; i++) fprintf(stderr, " %s", argv[i]);

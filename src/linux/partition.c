@@ -58,17 +58,29 @@ void rufux_partition_plan(const char *dst, const RufuxPartOpts *o,
 // leaving the disk signature, reserved word and partition table (which
 // sfdisk just wrote at 440-509) and the boot signature at 510-511 alone.
 static void write_mbr_bootcode(const char *dst) {
-  static const char *candidates[] = {
+  // Bundled copy first (AppImage: <exedir>/../share/syslinux).
+  static char rel[1152];
+  static const char *syscands[] = {
     "/usr/lib/syslinux/mbr/mbr.bin",       // Debian/Ubuntu
     "/usr/lib/syslinux/bios/mbr.bin",      // Arch
     "/usr/share/syslinux/mbr.bin",         // Fedora/openSUSE
     "/usr/lib/SYSLINUX/mbr.bin",
     NULL
   };
+  const char *cands[7];
+  int n = 0;
+  const char *ed = rufux_exe_dir();
+  if (ed[0]) {
+    snprintf(rel, sizeof rel, "%s/../share/syslinux/mbr.bin", ed);
+    cands[n++] = rel;
+  }
+  for (int i = 0; syscands[i] && n < 6; i++)
+    cands[n++] = syscands[i];
+  cands[n] = NULL;
   unsigned char code[440] = {0};
   int have = 0;
-  for (int i = 0; candidates[i] && !have; i++) {
-    FILE *f = fopen(candidates[i], "rb");
+  for (int i = 0; cands[i] && !have; i++) {
+    FILE *f = fopen(cands[i], "rb");
     if (!f) continue;
     size_t n = fread(code, 1, sizeof code, f);
     fclose(f);

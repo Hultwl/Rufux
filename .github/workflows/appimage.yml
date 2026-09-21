@@ -22,7 +22,8 @@ jobs:
             qt6-base-dev qt6-wayland qt6-xdgdesktopportal-platformtheme libudev-dev libblkid-dev libssl-dev gettext curl \
             util-linux dosfstools exfatprogs e2fsprogs mtools ntfs-3g \
             syslinux libarchive-tools p7zip-full xorriso udisks2 \
-            wimtools libhivex-bin gawk genisoimage python3 xvfb
+            wimtools libhivex-bin gawk genisoimage python3 xvfb \
+            parted udftools
 
       - name: Configure and build
         run: |
@@ -34,6 +35,30 @@ jobs:
 
       - name: Install into AppDir
         run: DESTDIR="$PWD/AppDir" cmake --install build
+
+      - name: Bundle helper tools
+        # Rufux shells out to distro tools instead of linking them in.
+        # Ship them inside the AppImage so hosts need nothing installed
+        # except the udisks2 daemon (mounts) and grub (GRUB mode only;
+        # its module tree is too big to bundle). linuxdeploy -e pulls
+        # each binary plus its shared libraries; AppDir/usr/bin is on
+        # PATH at runtime so rufux_have() finds them with no code
+        # changes. syslinux MBR data rides along under
+        # AppDir/usr/share/syslinux (boot.c/partition.c resolve it
+        # exe-relative); payloads and locales are already installed
+        # there by cmake, resolved the same way (wininstall.c, i18n.h).
+        # udevadm/partprobe stay host-side: one is systemd itself, the
+        # other is an opportunistic refresh, both guarded by rufux_have.
+        run: |
+          TOOLS="mkfs.vfat mkfs.ntfs ntfsfix mkfs.exfat mkfs.ext4 mkfs.udf sfdisk partprobe bsdtar 7z wimlib-imagex hivexsh hivexget syslinux udisksctl curl"
+          : > "$GITHUB_WORKSPACE/.rufux-tools"
+          for t in $TOOLS; do
+            p="$(command -v "$t")" || { echo "missing tool: $t"; exit 1; }
+            echo "-e $p" >> "$GITHUB_WORKSPACE/.rufux-tools"
+          done
+          mkdir -p AppDir/usr/share/syslinux
+          cp /usr/lib/syslinux/mbr/*.bin AppDir/usr/share/syslinux/
+          ls AppDir/usr/share/syslinux/
 
       - name: Fetch linuxdeploy
         run: |
@@ -53,11 +78,25 @@ jobs:
           ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
             --appdir AppDir \
             -e AppDir/usr/bin/rufux \
+            $(tr '\n' ' ' < "$GITHUB_WORKSPACE/.rufux-tools") \
             -d AppDir/usr/share/applications/io.github.hultwl.rufux.desktop \
             -i AppDir/usr/share/icons/hicolor/128x128/apps/io.github.hultwl.rufux.png \
             --plugin qt \
             --output appimage
           ls -la ./*.AppImage
+
+      - name: Verify bundled tools
+        # Every helper must have landed in AppDir/usr/bin with
+        # resolvable libraries, plus the syslinux MBR data.
+        run: |
+          for t in mkfs.vfat mkfs.ntfs ntfsfix mkfs.exfat mkfs.ext4 mkfs.udf sfdisk partprobe bsdtar 7z wimlib-imagex hivexsh hivexget syslinux udisksctl curl; do
+            [ -x "AppDir/usr/bin/$t" ] || { echo "not bundled: $t"; exit 1; }
+          done
+          [ -f AppDir/usr/share/syslinux/mbr.bin ] || { echo "mbr.bin missing"; exit 1; }
+          [ -f AppDir/usr/share/syslinux/gptmbr.bin ] || { echo "gptmbr.bin missing"; exit 1; }
+          missing="$(find AppDir/usr/bin AppDir/usr/lib -type f -executable 2>/dev/null | while read -r f; do ldd "$f" 2>/dev/null; done | grep 'not found' || true)"
+          [ -z "$missing" ] || { echo "unresolved libraries:$missing"; exit 1; }
+          echo "bundled tools OK"
 
       - name: Smoke test the AppImage
         # Starts the bundled Qt GUI on a virtual X server (the xcb plugin real
