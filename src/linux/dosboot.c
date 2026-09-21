@@ -93,15 +93,7 @@ const char *rufux_freedos_dir(void) {
     NULL,
   };
   // Relative to the executable (AppImage / installed bin).
-  static char exedir[1024] = {0};
-  if (!exedir[0]) {
-    ssize_t n = readlink("/proc/self/exe", exedir, sizeof exedir - 1);
-    if (n > 0) {
-      exedir[n] = 0;
-      char *slash = strrchr(exedir, '/');
-      if (slash) *slash = 0;
-    }
-  }
+  const char *exedir = rufux_exe_dir();
   char probe[1152];
   if (exedir[0]) {
     snprintf(probe, sizeof probe, "%s/../share/rufux/freedos", exedir);

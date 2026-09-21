@@ -11,6 +11,10 @@
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QCryptographicHash>
+#include <QDBusConnection>
+#include <QDBusInterface>
+#include <QDBusMessage>
+#include <QDBusVariant>
 #include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -30,6 +34,7 @@
 #include <QLocale>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QPalette>
 #include <QPlainTextEdit>
 #include <QProcess>
 #include <QProgressBar>
@@ -120,6 +125,61 @@ struct Advanced {
   }
 };
 
+// ---- dark / light, followed from the desktop ----------------------------
+// A Qt that ships inside an AppImage cannot see the desktop's platform theme, so
+// it would always come up light. The freedesktop portal tells every toolkit the
+// user's preference (org.freedesktop.appearance color-scheme: 1 dark, 2 light).
+// Returns -1 when no portal answers.
+int portalColorScheme() {
+  static bool unavailable = false;
+  if (unavailable) return -1;
+  QDBusInterface i("org.freedesktop.portal.Desktop", "/org/freedesktop/portal/desktop",
+                   "org.freedesktop.portal.Settings", QDBusConnection::sessionBus());
+  if (!i.isValid()) { unavailable = true; return -1; }
+  const QDBusMessage m = i.call("Read", "org.freedesktop.appearance", "color-scheme");
+  if (m.type() != QDBusMessage::ReplyMessage || m.arguments().isEmpty()) return -1;
+  QVariant v = m.arguments().first();
+  while (v.canConvert<QDBusVariant>()) v = v.value<QDBusVariant>().variant();
+  bool ok = false;
+  const int n = v.toInt(&ok);
+  return ok ? n : -1;
+}
+
+QPalette darkPalette() {
+  QPalette p;
+  const QColor bg(45, 45, 48), base(30, 30, 32), text(232, 232, 232), dis(130, 130, 130);
+  p.setColor(QPalette::Window, bg);
+  p.setColor(QPalette::WindowText, text);
+  p.setColor(QPalette::Base, base);
+  p.setColor(QPalette::AlternateBase, bg);
+  p.setColor(QPalette::Text, text);
+  p.setColor(QPalette::Button, QColor(58, 58, 62));
+  p.setColor(QPalette::ButtonText, text);
+  p.setColor(QPalette::BrightText, Qt::white);
+  p.setColor(QPalette::ToolTipBase, base);
+  p.setColor(QPalette::ToolTipText, text);
+  p.setColor(QPalette::PlaceholderText, dis);
+  p.setColor(QPalette::Link, QColor(96, 165, 250));
+  p.setColor(QPalette::Highlight, QColor(53, 132, 228));
+  p.setColor(QPalette::HighlightedText, Qt::white);
+  p.setColor(QPalette::Disabled, QPalette::Text, dis);
+  p.setColor(QPalette::Disabled, QPalette::ButtonText, dis);
+  p.setColor(QPalette::Disabled, QPalette::WindowText, dis);
+  return p;
+}
+
+// Called at start and then regularly, so a change of the desktop theme is followed.
+void followSystemScheme() {
+  static const QPalette original = QApplication::palette();
+  static int last = -2;
+  const int s = portalColorScheme();
+  if (s < 0 || s == last) return;
+  last = s;
+  const bool origIsDark = original.color(QPalette::Window).lightness() < 128;
+  if (s == 1 && !origIsDark) QApplication::setPalette(darkPalette());
+  else QApplication::setPalette(original);
+}
+
 struct ProbeResult {
   QString path;
   RufuxIsoInfo info{};
@@ -136,7 +196,7 @@ class MainWindow : public QWidget {
     log(QStringLiteral("Rufux ") + RUFUX_VERSION);
     refreshDevices(true);
     auto *poll = new QTimer(this);
-    QObject::connect(poll, &QTimer::timeout, [this] { refreshDevices(false); });
+    QObject::connect(poll, &QTimer::timeout, [this] { refreshDevices(false); followSystemScheme(); });
     poll->start(2000);
     syncEnabled();
   }
@@ -262,7 +322,7 @@ class MainWindow : public QWidget {
     labelEdit = new QLineEdit("NO_LABEL");
     format->addRow("Volume label", labelEdit);
     fsCombo = new QComboBox;
-    fsCombo->addItems({"FAT32", "NTFS", "exFAT", "UDF", "ext4"});
+    fsCombo->addItems({"FAT32", "NTFS", "exFAT", "UDF", "ext4"});  // narrowed for Windows images
     format->addRow("File system", fsCombo);
     clusterCombo = new QComboBox;
     clusterCombo->addItems({"512 bytes", "1024 bytes", "2048 bytes", "4096 bytes (Default)", "8192 bytes",
@@ -343,7 +403,7 @@ class MainWindow : public QWidget {
     QObject::connect(chkBad, &QCheckBox::toggled, passesCombo, &QComboBox::setEnabled);
     QObject::connect(chkFixed, &QCheckBox::toggled, [this](bool) { refreshDevices(true); });
     QObject::connect(bootCombo, &QComboBox::currentIndexChanged, [this](int) { syncEnabled(); });
-    QObject::connect(fsCombo, &QComboBox::currentIndexChanged, [this](int) { relabel(); });
+    QObject::connect(fsCombo, &QComboBox::currentIndexChanged, [this](int) { relabel(); syncEnabled(); });
     QObject::connect(persist, &QSlider::valueChanged, [this](int v) {
       if (v == 0) persistValue->setText("No persistence");
       else if (v % 2) persistValue->setText(QString::number(v * 512) + " MB");
@@ -363,9 +423,20 @@ class MainWindow : public QWidget {
 
   // ---- helpers ----
   QString fsKey() const {
-    static const char *keys[] = {"vfat", "ntfs", "exfat", "udf", "ext4"};
-    const int i = fsCombo->currentIndex();
-    return QString::fromLatin1(keys[i >= 0 && i < 5 ? i : 0]);
+    const QString t = fsCombo->currentText();
+    if (t == "NTFS") return "ntfs";
+    if (t == "exFAT") return "exfat";
+    if (t == "UDF") return "udf";
+    if (t == "ext4") return "ext4";
+    return "vfat";
+  }
+  // Windows media can be FAT32 or NTFS; the other file systems are for everything else.
+  void setFsChoices(bool windows, const QString &keep) {
+    QSignalBlocker b(fsCombo);
+    fsCombo->clear();
+    fsCombo->addItems(windows ? QStringList{"FAT32", "NTFS"} : QStringList{"FAT32", "NTFS", "exFAT", "UDF", "ext4"});
+    const int i = fsCombo->findText(keep);
+    fsCombo->setCurrentIndex(i >= 0 ? i : 0);
   }
   void log(const QString &line) {
     const QString s = QDateTime::currentDateTime().toString("HH:mm:ss  ") + line;
@@ -383,8 +454,9 @@ class MainWindow : public QWidget {
     for (QWidget *w : {static_cast<QWidget *>(devCombo), static_cast<QWidget *>(bootCombo),
                        static_cast<QWidget *>(selectBtn), static_cast<QWidget *>(schemeCombo),
                        static_cast<QWidget *>(targetCombo), static_cast<QWidget *>(fsCombo),
-                       static_cast<QWidget *>(clusterCombo), static_cast<QWidget *>(labelEdit)})
+                       static_cast<QWidget *>(labelEdit)})
       w->setEnabled(!run);
+    clusterCombo->setEnabled(!run && (fsKey() == "vfat" || fsKey() == "ntfs"));  // only these apply it
     hashBtn->setEnabled(!run && have);
     closeBtn->setEnabled(!run);
     startBtn->setText(run ? "CANCEL" : "START");
@@ -463,10 +535,10 @@ class MainWindow : public QWidget {
     imageInfo->setText("Using image: " + QFileInfo(r.path).fileName());
     log("Using image: " + r.path + " (" + humanSize(r.ok ? r.info.size_bytes : QFileInfo(r.path).size()) + ")");
     if (isoWindows) {
-      fsCombo->setCurrentIndex(1);      // NTFS
+      setFsChoices(true, "NTFS");
       schemeCombo->setCurrentIndex(1);  // GPT, UEFI (non CSM)
     } else {
-      fsCombo->setCurrentIndex(0);      // FAT32
+      setFsChoices(false, "FAT32");
       schemeCombo->setCurrentIndex(0);  // MBR
     }
     labelEdit->setText(sanitizeLabel(isoLabel.isEmpty() ? QString("NO_LABEL") : isoLabel, fsKey()));
@@ -663,7 +735,7 @@ class MainWindow : public QWidget {
       << "--scheme" << (schemeCombo->currentIndex() == 1 ? "gpt" : "dos")
       << "--fs" << fs << "--label" << sanitizeLabel(labelEdit->text(), fs)
       << "--persist-mb" << QString::number(mode == "extract" ? persist->value() * 512 : 0)
-      << "--cluster-sectors" << QString::number(clusterSectors[clusterCombo->currentIndex()])
+      << "--cluster-sectors" << QString::number(clusterCombo->isEnabled() ? clusterSectors[clusterCombo->currentIndex()] : 0)
       << "--badblock-passes" << QString::number(chkBad->isChecked() ? passesCombo->currentIndex() + 1 : 0)
       << (chkQuick->isChecked() ? "--quick" : "--full");
     if (!chkExt->isChecked()) a << "--no-autorun";
@@ -760,8 +832,15 @@ int rufux_gui_run(int argc, char **argv) {
   // The portal theme gives it the desktop's file dialogs.
   if (!qEnvironmentVariableIsSet("QT_QPA_PLATFORMTHEME") && qEnvironmentVariableIsSet("APPIMAGE"))
     qputenv("QT_QPA_PLATFORMTHEME", "xdgdesktopportal");
+  // The AppImage can carry the GNOME-style (libadwaita) window decoration plugin.
+  if (qEnvironmentVariableIsSet("APPIMAGE") && !qEnvironmentVariableIsSet("QT_WAYLAND_DECORATION")) {
+    const QString exe = QFile::symLinkTarget("/proc/self/exe");
+    if (QFile::exists(QFileInfo(exe).absolutePath() + "/../plugins/wayland-decoration-client/libqadwaitadecorations.so"))
+      qputenv("QT_WAYLAND_DECORATION", "adwaita");
+  }
   int qargc = int(keep.size());
   QApplication app(qargc, keep.data());
+  followSystemScheme();
   QApplication::setApplicationName("Rufux");
   QApplication::setDesktopFileName("io.github.hultwl.rufux");
   QApplication::setWindowIcon(QIcon::fromTheme("io.github.hultwl.rufux"));

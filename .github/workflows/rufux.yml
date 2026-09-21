@@ -9,6 +9,7 @@ on:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - name: Install deps
@@ -25,6 +26,12 @@ jobs:
         run: cmake --build build
       - name: Test
         run: ctest --test-dir build --output-on-failure
+      - name: Test as root
+        # The tests that matter most (partition tables, file systems, boot.wim
+        # edits, WIM splitting) need root and loop devices, so as a normal user
+        # they only skip. Runners allow both; the udisksctl shim stands in for
+        # the desktop's udisks daemon.
+        run: sudo env "PATH=$PWD/tests/shims:$PATH" ctest --test-dir build --output-on-failure
       - name: Package (artifact)
         run: |
           DESTDIR="$PWD/dist" cmake --install build

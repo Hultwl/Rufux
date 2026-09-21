@@ -4,6 +4,7 @@
 #include "exec.h"
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -57,7 +58,8 @@ void rufux_partition_plan(const char *dst, const RufuxPartOpts *o,
 // freely redistributable syslinux mbr.bin over just those 440 bytes,
 // leaving the disk signature, reserved word and partition table (which
 // sfdisk just wrote at 440-509) and the boot signature at 510-511 alone.
-static void write_mbr_bootcode(const char *dst) {
+// Returns 0 (also when there is simply no syslinux code to write) or -1 if a write failed.
+static int write_mbr_bootcode(const char *dst) {
   // Bundled copy first (AppImage: <exedir>/../share/syslinux).
   static char rel[1152];
   static const char *syscands[] = {
@@ -86,13 +88,12 @@ static void write_mbr_bootcode(const char *dst) {
     fclose(f);
     if (n > 0) have = 1;
   }
-  if (!have) return;  // no syslinux on this host: leave the region zeroed, as before
+  if (!have) return 0;  // no syslinux on this host: leave the region zeroed, as before
   int fd = open(dst, O_WRONLY | O_CLOEXEC);
-  if (fd < 0) return;
-  ssize_t w = pwrite(fd, code, sizeof code, 0);
-  (void)w;  // best effort: a disk still boots (via UEFI) without this
-  fsync(fd);
+  if (fd < 0) return -1;
+  int bad = rufux_pwrite_all(fd, code, sizeof code, 0) != 0 || fsync(fd) != 0;
   close(fd);
+  return bad ? -1 : 0;
 }
 
 int rufux_partition(const char *dst, const RufuxPartOpts *o,
@@ -229,7 +230,10 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
     if (rufux_have("udevadm")) rufux_run(us, 0);
   }
   if (rc != 0) snprintf(err, cap, "sfdisk failed on '%s'", dst);
-  if (rc == 0 && !strcmp(scheme, "dos")) write_mbr_bootcode(dst);
+  if (rc == 0 && !strcmp(scheme, "dos") && write_mbr_bootcode(dst) != 0) {
+    snprintf(err, cap, "could not write the MBR boot code to '%s': %s", dst, strerror(errno));
+    rc = -1;
+  }
   if (rc == 0 && !strcmp(scheme, "gpt") && rufux_have("sfdisk")) {
     // Windows ignores partitions whose type it does not know, so the drive would
     // look empty to Setup. sfdisk labels such a type "unknown"; never accept that.

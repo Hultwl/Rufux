@@ -1,5 +1,6 @@
 // Rufux entry point: argument parsing and command dispatch. No windows.h.
 #include <stdio.h>
+#include <limits.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -94,6 +95,129 @@ static void cli_clog(const char *m, void *u) {
 
 // End-to-end flows live in src/linux/create.c (shared with the GUI).
 
+// ---------------------------------------------------------------------------
+// Strict option checking. A typo such as "--rela" must never be read as "no
+// option": for a tool that writes disks, "I thought I passed --dry-run" is the
+// worst mistake to make silently. Every option of every command is listed here.
+// ---------------------------------------------------------------------------
+typedef struct { const char *cmd, *flags, *values; } CmdSpec;
+static const CmdSpec specs[] = {
+  {"list", "--allow-fixed --json", ""},
+  {"probe", "--detail", ""},
+  {"checksum", "", "--algo"},
+  {"write", "--allow-file --allow-fixed --dry-run --real --verify --yes", ""},
+  {"partition", "--allow-file --allow-fixed --dry-run --real --yes", "--fs --layout --scheme"},
+  {"format", "--allow-file --allow-fixed --dry-run --real --yes", "--fs --label"},
+  {"extract", "--dry-run", ""},
+  {"install-boot", "--allow-file --allow-fixed --dry-run --real --yes", "--mbr"},
+  {"persist", "--dry-run", "--label --size"},
+  {"badblocks", "--allow-file --yes", "--write-patterns"},
+  {"mount", "--dry-run", ""},
+  {"umount", "--dry-run", ""},
+  {"secureboot-status", "", ""},
+  {"validate-efi", "", ""},
+  {"update-check", "", ""},
+  {"download-windows", "", ""},
+  {"create",
+   "--allow-file --allow-fixed --dry-run --full --no-autorun --quick --real --uefi-validate --verify --yes",
+   "--badblock-passes --cluster-sectors --fs --keyboard --label --locale --mode --persist-mb --scheme "
+   "--split-wim --timezone --wue"},
+};
+
+// 1 if `word` is one of the space-separated words in `list`.
+static int in_list(const char *list, const char *word) {
+  size_t n = strlen(word);
+  for (const char *p = list; *p;) {
+    while (*p == ' ') p++;
+    const char *e = p;
+    while (*e && *e != ' ') e++;
+    if ((size_t)(e - p) == n && !strncmp(p, word, n)) return 1;
+    p = e;
+  }
+  return 0;
+}
+
+static int edit_distance(const char *a, const char *b) {
+  size_t la = strlen(a), lb = strlen(b);
+  if (la > 40 || lb > 40) return 99;
+  int d[41][41];
+  for (size_t i = 0; i <= la; i++) d[i][0] = (int)i;
+  for (size_t j = 0; j <= lb; j++) d[0][j] = (int)j;
+  for (size_t i = 1; i <= la; i++)
+    for (size_t j = 1; j <= lb; j++) {
+      int c = a[i - 1] == b[j - 1] ? 0 : 1;
+      int m = d[i - 1][j] + 1;
+      if (d[i][j - 1] + 1 < m) m = d[i][j - 1] + 1;
+      if (d[i - 1][j - 1] + c < m) m = d[i - 1][j - 1] + c;
+      d[i][j] = m;
+    }
+  return d[la][lb];
+}
+
+// The closest known option to `bad`, or NULL if none is close enough.
+static const char *closest_option(const CmdSpec *sp, const char *bad, char *buf, size_t cap) {
+  int best = 3;
+  const char *found = NULL;
+  const char *lists[2] = {sp->flags, sp->values};
+  for (int k = 0; k < 2; k++)
+    for (const char *p = lists[k]; *p;) {
+      while (*p == ' ') p++;
+      const char *e = p;
+      while (*e && *e != ' ') e++;
+      if (e > p && (size_t)(e - p) < cap) {
+        char w[64];
+        snprintf(w, sizeof w, "%.*s", (int)(e - p), p);
+        int d = edit_distance(bad, w);
+        if (d < best) { best = d; snprintf(buf, cap, "%s", w); found = buf; }
+      }
+      p = e;
+    }
+  return found;
+}
+
+// Returns 0 if every option is known to the command and has its value, else 2.
+static int validate_flags(int argc, char **argv) {
+  const CmdSpec *sp = NULL;
+  for (size_t k = 0; k < sizeof specs / sizeof specs[0]; k++)
+    if (!strcmp(argv[1], specs[k].cmd)) sp = &specs[k];
+  if (!sp) return 0;  // unknown command: the usage text handles it
+  for (int i = 2; i < argc; i++) {
+    const char *t = argv[i];
+    if (t[0] != '-' || !t[1]) continue;  // a path or other positional argument
+    if (in_list(sp->flags, t)) continue;
+    if (in_list(sp->values, t)) {
+      if (i + 1 >= argc) {
+        fprintf(stderr, "rufux %s: option '%s' needs a value\n", sp->cmd, t);
+        return 2;
+      }
+      i++;
+      continue;
+    }
+    char buf[64];
+    const char *g = closest_option(sp, t, buf, sizeof buf);
+    fprintf(stderr, "rufux %s: unknown option '%s'", sp->cmd, t);
+    if (g) fprintf(stderr, " (did you mean '%s'?)", g);
+    fprintf(stderr, "\nNothing was changed. Run 'rufux' without arguments for the list of options.\n");
+    return 2;
+  }
+  return 0;
+}
+
+// /dev/disk/by-id/usb-... and friends are symlinks. Every later step derives
+// partition names from the real node (/dev/sdb -> /dev/sdb1), so resolve first.
+static void resolve_device_links(int argc, char **argv) {
+  for (int i = 2; i < argc; i++) {
+    struct stat st;
+    if (strncmp(argv[i], "/dev/", 5) || lstat(argv[i], &st) != 0 || !S_ISLNK(st.st_mode)) continue;
+    char real[PATH_MAX];
+    if (!realpath(argv[i], real)) continue;
+    char *dup = strdup(real);
+    if (!dup) continue;
+    fprintf(stderr, "rufux: %s is %s\n", argv[i], dup);
+    argv[i] = dup;
+  }
+}
+
 int main(int argc, char **argv) {
   // Line-buffered stdout even into pipes: log lines must arrive live,
   // not in one block at exit (GUI streams them).
@@ -101,6 +225,10 @@ int main(int argc, char **argv) {
   rufux_i18n_init();
   if (argc >= 2 && (!strcmp(argv[1], "--gui") || !strcmp(argv[1], "gui")))
     return rufux_gui_run(argc, argv);
+  if (argc >= 2) {
+    if (validate_flags(argc, argv) != 0) return 2;
+    resolve_device_links(argc, argv);
+  }
 
   if (argc >= 2 && !strcmp(argv[1], "list")) {
     int json = 0, allow = 0;

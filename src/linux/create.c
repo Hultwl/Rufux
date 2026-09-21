@@ -197,21 +197,21 @@ static int zero_head(const char *dst, RufuxCreateLog log, void *luser,
 // of whatever was there before survive (FAT32 keeps one at sector 6, NTFS one
 // in the last sector of the volume). Leftovers make probers - and Windows -
 // see a volume that no longer exists, which shows up as a 0-byte volume.
-// Best effort: a failure here is not worth aborting the run over.
-static void wipe_part_edges(const char *part) {
+// A drive that cannot even take zeros is failing or write-protected, so stop.
+static int wipe_part_edges(const char *part) {
   int fd = open(part, O_WRONLY | O_CLOEXEC);
-  if (fd < 0) return;
+  if (fd < 0) return -1;
   unsigned long long sz = 0;
   if (ioctl(fd, BLKGETSIZE64, &sz) != 0) sz = 0;
   static char z[1 << 20];
   memset(z, 0, sizeof z);
   size_t head = (sz && sz < sizeof z) ? (size_t)sz : sizeof z;
-  ssize_t w = pwrite(fd, z, head, 0);
-  (void)w;
-  if (sz > (unsigned long long)sizeof z * 2)
-    w = pwrite(fd, z, sizeof z, (off_t)(sz - sizeof z));
-  fsync(fd);
+  int bad = rufux_pwrite_all(fd, z, head, 0) != 0;
+  if (!bad && sz > (unsigned long long)sizeof z * 2)
+    bad = rufux_pwrite_all(fd, z, sizeof z, (off_t)(sz - sizeof z)) != 0;
+  if (fsync(fd) != 0) bad = 1;
   close(fd);
+  return bad ? -1 : 0;
 }
 
 // dd layout: badblocks 0-10, zero 10-15, write 15-(verify?85:100), verify 85-100.
@@ -624,7 +624,15 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
     if (log) log("Writing UEFI:NTFS boot partition...", luser);
     if (rufux_write_uefi_ntfs(p2, err, cap) != 0) return -1;
   }
-  wipe_part_edges(p1);
+  if (!o->quick_format) {  // "Quick format" unticked: clear the boot area first, as the other flows do
+    ProgMap zm = {prog, puser, 5, 3};
+    if (zero_head(p1, log, luser, prog ? (RufuxCreateProgress)mapped : NULL, &zm, err, cap) != 0)
+      return -1;
+  }
+  if (wipe_part_edges(p1) != 0) {
+    snprintf(err, cap, "cannot write to '%s': %s (write-protected or failing drive?)", p1, strerror(errno));
+    return -1;
+  }
   RufuxMkfsOpts main_o = {.fs = fsname, .label = o->label, .cluster_sectors = o->cluster_sectors,
                           .dry_run = 0, .allow_fixed = o->allow_fixed, .allow_file = 0, .yes = 1};
   snprintf(m, sizeof m, "Creating file system (%s)...", fsname);

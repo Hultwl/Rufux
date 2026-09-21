@@ -19,16 +19,38 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq cmake gcc pkg-config file wget \
-            qt6-base-dev qt6-wayland qt6-xdgdesktopportal-platformtheme libudev-dev libblkid-dev libssl-dev gettext curl \
+            ninja-build libxkbcommon-dev libwayland-dev libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 \
+            libxcb-image0 libxcb-keysyms1 libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1 \
+            libegl1 libgl1 libudev-dev libblkid-dev libssl-dev gettext curl \
             util-linux dosfstools exfatprogs e2fsprogs mtools ntfs-3g \
             syslinux libarchive-tools p7zip-full xorriso udisks2 \
             wimtools libhivex-bin gawk genisoimage python3 xvfb \
             parted udftools
 
+      - name: Install Qt 6.8
+        # The distro's Qt 6.4 cannot follow the desktop's dark theme or load
+        # the GNOME window decorations, so the AppImage ships Qt 6.8.
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.8.3'
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          cache: true
+
       - name: Configure and build
         run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+          cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
           cmake --build build
+
+      - name: Build the GNOME window decorations
+        # libadwaita-style title bar and buttons on Wayland. Qt loads it when
+        # the app sets QT_WAYLAND_DECORATION=adwaita (done in the GUI startup).
+        run: |
+          git clone --depth 1 --branch 0.1.7 https://github.com/FedoraQt/QAdwaitaDecorations qad
+          cmake -S qad -B qad-build -G Ninja -DUSE_QT6=ON -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH="$QT_ROOT_DIR"
+          cmake --build qad-build
+          find qad-build -name '*.so' -print
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
@@ -93,21 +115,42 @@ jobs:
 
       - name: Bundle AppImage
         env:
-          QMAKE: /usr/lib/qt6/bin/qmake
+          QMAKE: ${{ env.QT_ROOT_DIR }}/bin/qmake
+          EXTRA_QT_MODULES: svg
           # GitHub runners have no FUSE: let linuxdeploy run its plugin AppImage extracted.
           APPIMAGE_EXTRACT_AND_RUN: 1
           DEPLOY_PLATFORM_THEMES: 1
-          EXTRA_PLATFORM_PLUGINS: libqwayland-generic.so
+          EXTRA_PLATFORM_PLUGINS: libqwayland-generic.so;libqwayland-egl.so
         run: |
+          # No GTK platform theme: it would drag GTK itself into the bundle.
+          rm -f "$QT_ROOT_DIR/plugins/platformthemes/libqgtk3.so"
+          # First pass fills the AppDir; the decoration plugin is added; the
+          # second pass makes the image.
           ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
             --appdir AppDir \
             -e AppDir/usr/bin/rufux \
             $(tr '\n' ' ' < "$GITHUB_WORKSPACE/.rufux-tools") \
             -d AppDir/usr/share/applications/io.github.hultwl.rufux.desktop \
             -i AppDir/usr/share/icons/hicolor/128x128/apps/io.github.hultwl.rufux.png \
-            --plugin qt \
+            --plugin qt
+          mkdir -p AppDir/usr/plugins/wayland-decoration-client
+          cp "$(find qad-build -name 'libqadwaitadecorations*.so' | head -1)" \
+             AppDir/usr/plugins/wayland-decoration-client/libqadwaitadecorations.so
+          ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
+            --appdir AppDir \
+            -d AppDir/usr/share/applications/io.github.hultwl.rufux.desktop \
+            -i AppDir/usr/share/icons/hicolor/128x128/apps/io.github.hultwl.rufux.png \
             --output appimage
           ls -la ./*.AppImage
+
+      - name: Verify the desktop integration is bundled
+        run: |
+          for f in plugins/platformthemes/libqxdgdesktopportal.so plugins/wayland-decoration-client/libqadwaitadecorations.so \
+                   plugins/wayland-decoration-client/libbradient.so plugins/platforms/libqwayland-generic.so plugins/platforms/libqxcb.so; do
+            [ -f "AppDir/usr/$f" ] || { echo "missing from the bundle: $f"; exit 1; }
+          done
+          ls AppDir/usr/lib | grep -c 'libQt6' | sed 's/^/Qt libraries bundled: /'
+          [ ! -e AppDir/usr/plugins/platformthemes/libqgtk3.so ] || { echo "GTK platform theme was bundled"; exit 1; }
 
       - name: Verify bundled tools
         # Every helper must have landed in AppDir/usr/bin with

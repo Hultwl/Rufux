@@ -1,5 +1,6 @@
 #define _GNU_SOURCE
 #include "writer.h"
+#include "exec.h"
 #include "device.h"
 #include <stdio.h>
 #include <string.h>
@@ -179,12 +180,13 @@ int rufux_write_image(const char *src, const char *dst,
     // dst offset 0; for block, reads from start
     lseek(fb, 0, SEEK_SET);
     while ((na = read_capped(fa, ba, &vrem)) > 0) {
-      size_t got = 0;
-      while (got < na) {
-        ssize_t r = read(fb, bb + got, na - got);
-        if (r <= 0) break;
-        got += (size_t)r;
+      ssize_t rr = rufux_read_full(fb, bb, na);
+      if (rr < 0) {
+        snprintf(err, errcap, "verify: read error at offset %llu: %s", vdone, strerror(errno));
+        rc = -1;
+        break;
       }
+      size_t got = (size_t)rr;
       if (got != na || memcmp(ba, bb, na) != 0) {
         snprintf(err, errcap, "verify mismatch at offset %llu", vdone);
         rc = -1;

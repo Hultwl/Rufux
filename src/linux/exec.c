@@ -1,3 +1,4 @@
+#include <errno.h>
 #include "exec.h"
 #include <stdio.h>
 #include <string.h>
@@ -28,6 +29,30 @@ int rufux_have(const char *name) {
 // Directory containing the running executable, via /proc/self/exe.
 // Lets relocatable bundles (AppImage) find data next to the binary:
 // <exedir>/../share/... mirrors a /usr install prefix.
+int rufux_pwrite_all(int fd, const void *buf, size_t n, off_t off) {
+  const char *p = buf;
+  while (n > 0) {
+    ssize_t w = pwrite(fd, p, n, off);
+    if (w < 0 && errno == EINTR) continue;
+    if (w <= 0) return -1;
+    p += w; off += w; n -= (size_t)w;
+  }
+  return 0;
+}
+
+ssize_t rufux_read_full(int fd, void *buf, size_t n) {
+  char *p = buf;
+  size_t got = 0;
+  while (got < n) {
+    ssize_t r = read(fd, p + got, n - got);
+    if (r < 0 && errno == EINTR) continue;
+    if (r < 0) return -1;
+    if (r == 0) break;
+    got += (size_t)r;
+  }
+  return (ssize_t)got;
+}
+
 const char *rufux_exe_dir(void) {
   static char dir[1024] = {0};
   static int done = 0;

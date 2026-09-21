@@ -122,15 +122,7 @@ static const char *uefi_img_local(void) {
     struct stat st;
     if (stat(path, &st) == 0 && st.st_size > 100000) return path;
   }
-  static char exedir[1024] = {0};
-  if (!exedir[0]) {
-    ssize_t n = readlink("/proc/self/exe", exedir, sizeof exedir - 1);
-    if (n > 0) {
-      exedir[n] = 0;
-      char *slash = strrchr(exedir, '/');
-      if (slash) *slash = 0;
-    }
-  }
+  const char *exedir = rufux_exe_dir();
   static const char *cands[] = {
     "res/uefi/uefi-ntfs.img", // build tree
     "/usr/share/rufux/uefi-ntfs.img",
@@ -626,8 +618,8 @@ static void say(RufuxWueLog log, void *lu, const char *m) { if (log) log(m, lu);
 // the archive atomically and the result is read back.
 static int patch_boot_wim(const char *root, RufuxWueLog log, void *lu) {
   // hivexget is a Perl script (not bundlable); hivexsh is ELF and already
-  // required for the edit, so it does the read-back too: `lsval KEY`
-  // prints the bare decimal value and exits nonzero on a missing key.
+  // required for the edit, so it does the read-back too: `lsval` lists the
+  // values of LabConfig and we look for the one we wrote.
   if (!rufux_have("wimlib-imagex") || !rufux_have("hivexsh")) {
     say(log, lu, "wimlib-imagex/hivex not installed: using the answer-file fallback for the Secure Boot/TPM/RAM bypass.");
     return 1;
@@ -667,16 +659,17 @@ static int patch_boot_wim(const char *root, RufuxWueLog log, void *lu) {
     const char *ex2[] = {"wimlib-imagex", "extract", wim, "2", "/Windows/System32/config/SYSTEM",
                          dest2, "--no-acls", NULL};
     if (rufux_run(ex2, 0) != 0) break;
-    char hive2[1300], out[64] = {0};
+    // Read the value back with hivexsh itself (hivexget is not always installed).
+    char hive2[1300], vs[1300], out[1024] = {0};
     snprintf(hive2, sizeof hive2, "%s/SYSTEM", chk);
-    char vs[1200];
     snprintf(vs, sizeof vs, "%s/verify.hsh", dir);
     FILE *vf = fopen(vs, "w");
     if (!vf) break;
-    fputs("cd Setup\\LabConfig\nlsval BypassSecureBootCheck\n", vf);
+    fputs("cd \\Setup\\LabConfig\nlsval\n", vf);
     fclose(vf);
     const char *g[] = {"hivexsh", "-f", vs, hive2, NULL};
-    if (rufux_capture(g, out, sizeof out) != 0 || atoi(out) != 1) {
+    if (rufux_capture(g, out, sizeof out) != 0 ||
+        !strstr(out, "\"BypassSecureBootCheck\"=dword:00000001")) {
       say(log, lu, "Registry change did not verify after writing boot.wim.");
       break;
     }
