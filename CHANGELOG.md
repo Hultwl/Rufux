@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.8
+
+- Every command line option is checked against a full list for its command.
+  A typo (`--rela` instead of `--real`) is now a hard error with a "did you
+  mean" suggestion and nothing is changed, instead of being silently ignored
+  - the worst failure mode for a disk writer.
+- `/dev/disk/by-id/...` and other symlinked device paths are resolved before
+  use.
+- The MBR boot code write and the partition-clearing write now check the
+  actual number of bytes written; a short write or a signal no longer passes
+  as success. Verification reads survive being interrupted by a signal.
+- One shared helper resolves the running executable's directory; the Windows
+  installer and the FreeDOS boot record writer no longer each parse
+  `/proc/self/exe` themselves.
+- Quick format is now honoured for Windows media, matching the checkbox.
+- The file system list for a Windows image is FAT32 or NTFS only - the two
+  the Windows flow actually builds - instead of also offering exFAT/UDF/ext4,
+  which never worked for Windows media anyway.
+- Cluster size is only enabled for FAT32/NTFS, where it applies.
+- The Windows registry bypass writer uses `hivexsh` only; `hivexget`, a Perl
+  script, cannot be bundled in the AppImage.
+- The window now follows the desktop's light/dark setting through the
+  `org.freedesktop.appearance` portal, checked on a timer, independent of
+  the Qt version in use.
+- CI now runs the full test suite as root as well as as a normal user, and
+  fails the build if anything is skipped as root - the hardware-dependent
+  tests (partition tables, file systems, boot.wim edits, WIM splitting) need
+  root and loop devices, so as a normal user they only skip, and a green
+  build previously proved nothing about them.
+- The AppImage bundles Qt 6.8 (the distro's older Qt cannot follow the
+  desktop theme or load Wayland window decorations) and the GNOME/libadwaita
+  Wayland decoration plugin, so the window gets a normal title bar on a GNOME
+  Wayland session instead of none at all. CI now fails the build if a bundled
+  helper tool turns out to be a wrapper script instead of a real binary, or
+  if any library in the bundle fails to resolve.
+- New `tests/test_cli.sh`: checks the strict option parsing, and every
+  documented Windows-flow argument combination, end to end.
+
 ## 1.7
 
 - The window is now a copy of Rufus's main window: same sections, wording and
