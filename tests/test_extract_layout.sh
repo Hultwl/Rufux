@@ -22,7 +22,8 @@ fi
 fail=0; bad() { echo "FAIL $*"; fail=1; }
 tab=$(sfdisk -d $L)
 [ "$(echo "$tab" | grep -c "^${L}p")" = 1 ] || bad "expected exactly one partition"
-echo "$tab" | grep -q EBD0A0A2 || bad "partition is not typed Microsoft basic data"
+echo "$tab" | grep -q EBD0A0A2-B9E5-4433-87C0-68B6B72699C7 || bad "partition is not typed Microsoft basic data"
+grep -q "type 'unknown'" $T/log && bad "sfdisk reports an unknown partition type"
 echo "$tab" | grep -q 0FC63DAF && bad "partition typed as Linux filesystem"
 mkdir -p $T/m
 if mount -t ntfs-3g ${L}p1 $T/m; then

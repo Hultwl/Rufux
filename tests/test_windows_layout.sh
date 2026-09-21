@@ -29,7 +29,9 @@ for scheme in gpt dos; do
   echo "$p2" | grep -q "size= *2048," || bad "$scheme: partition 2 is not 1 MiB"
   if [ $scheme = gpt ]; then
     echo "$tab" | grep -q C12A7328 && bad "gpt: a partition is typed ESP (Setup breaks with two ESPs)"
-    echo "$p1" | grep -q EBD0A0A2 || bad "gpt: data partition is not basic data"
+    echo "$p1" | grep -q EBD0A0A2-B9E5-4433-87C0-68B6B72699C7 || bad "gpt: data partition is not the real Microsoft basic data GUID"
+    echo "$tab" | grep -qi "B938-11D2" && bad "gpt: a partition carries the bogus basic-data GUID (Windows ignores it)"
+    grep -q "type 'unknown'" $T/log && bad "gpt: sfdisk reports an unknown partition type"
     echo "$p2" | grep -q 'attrs="GUID:63"' || bad "gpt: partition 2 lacks the no-drive-letter attribute"
   else
     echo "$p1" | grep -q "type=7" || bad "dos: data partition is not type 7"

@@ -144,8 +144,8 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
     if (!strcmp(scheme, "gpt"))
       snprintf(script, sizeof script,
                "label: gpt\n"
-               "start=1MiB, size=%lluMiB, type=EBD0A0A2-B938-11D2-B3FA-00A0C93EC93B, name=\"Windows\"\n"
-               "size=1MiB, type=EBD0A0A2-B938-11D2-B3FA-00A0C93EC93B, name=\"UEFI:NTFS\", attrs=\"GUID:63\"\n",
+               "start=1MiB, size=%lluMiB, type=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7, name=\"Windows\"\n"
+               "size=1MiB, type=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7, name=\"UEFI:NTFS\", attrs=\"GUID:63\"\n",
                main_mib);
     else
       snprintf(script, sizeof script,
@@ -156,7 +156,7 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
       // Windows only mounts Microsoft basic data partitions; the Linux
       // filesystem type is right for ext* alone.
       const char *gtype = !strcmp(mbr_type, "83") ? "0FC63DAF-8483-4772-8E79-3D69D8477DE4"
-                                                   : "EBD0A0A2-B938-11D2-B3FA-00A0C93EC93B";
+                                                   : "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7";
       snprintf(script, sizeof script, "label: gpt\nstart=1MiB, type=%s\n", gtype);
     }
     else
@@ -168,7 +168,7 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
     // the Microsoft basic data type, not the Linux filesystem type.
     snprintf(script, sizeof script,
              "label: gpt\nsize=512MiB, type=C12A7328-F81F-11D2-BA4B-00A0C93EC93B\n"
-             "type=EBD0A0A2-B938-11D2-B3FA-00A0C93EC93B\n");
+             "type=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7\n");
   } else {
     snprintf(script, sizeof script,
              "label: dos\nsize=512MiB, type=ef\ntype=%s, bootable\n", mbr_type);

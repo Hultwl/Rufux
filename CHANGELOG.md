@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.6.4 (the real cause of "a media driver is missing")
+
+- **Fixed: GPT sticks had an invalid partition type.** Since 1.2.4 the data
+  partition was typed `EBD0A0A2-B938-11D2-B3FA-00A0C93EC93B`, which is not a
+  real GUID (a mix of two others). The Microsoft basic data type is
+  `EBD0A0A2-B9E5-4433-87C0-68B6B72699C7`. sfdisk labelled the partition
+  `unknown`, and Windows ignores partitions of an unknown type, so Windows PE
+  saw the stick as an online GPT disk with no volume at all. Setup then
+  reported a missing media driver. Found by booting a Rufux stick in QEMU:
+  `list disk` showed the disk, `list volume` showed no volume from it.
+  MBR sticks and Ventoy were never affected.
+- The layout and extract tests now check the exact GUID and that sfdisk does
+  not report an unknown type.
+
 ## 1.6.3 (real MBR bootstrap code, not zeroed)
 
 - Compared byte-for-byte against real Rufus source (`format.c`'s `WriteMBR`).
