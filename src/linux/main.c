@@ -57,6 +57,15 @@ static void cli_progress(unsigned long long done, unsigned long long total, void
   (void)u;
   static int last = -1;
   static double t0 = 0;
+  // A real terminal redraws in place with '\r'. Piped output (the GUI's
+  // pkexec worker included) is read a line at a time, so a '\r'-only
+  // update with no '\n' never completes a line and the reader never sees
+  // it until the process happens to print one - which used to mean the
+  // GUI's progress bar sat at 0 until the final 100% line arrived. Use
+  // '\n' whenever stderr isn't a terminal so every update is its own line.
+  static int tty = -1;
+  if (tty < 0) tty = isatty(fileno(stderr));
+  const char *eol = tty ? "" : "\n";
   struct timespec ts;
   clock_gettime(CLOCK_MONOTONIC, &ts);
   double now = ts.tv_sec + ts.tv_nsec / 1e9;
@@ -64,8 +73,8 @@ static void cli_progress(unsigned long long done, unsigned long long total, void
   if (total == 100 && done <= 100) {
     int pct = (int)done;
     if (pct != last) {
-      fprintf(stderr, "\r%3d%%", pct);
-      if (done == total) fprintf(stderr, "\n");
+      fprintf(stderr, "\r%3d%%%s", pct, eol);
+      if (done == total && tty) fprintf(stderr, "\n");
       last = pct;
     }
     return;
@@ -76,14 +85,14 @@ static void cli_progress(unsigned long long done, unsigned long long total, void
     double el = now - t0 > 0 ? now - t0 : 0.001;
     double rate = done / el / 1048576.0; // MB/s
     if (done == total || rate <= 0) {
-      fprintf(stderr, "\r%3d%%  %llu/%llu MB  %.1f MB/s", pct,
-              done >> 20, total >> 20, rate);
+      fprintf(stderr, "\r%3d%%  %llu/%llu MB  %.1f MB/s%s", pct,
+              done >> 20, total >> 20, rate, eol);
     } else {
       unsigned eta = (unsigned)((total - done) / done * el);
-      fprintf(stderr, "\r%3d%%  %llu/%llu MB  %.1f MB/s  ETA %u:%02u", pct,
-              done >> 20, total >> 20, rate, eta / 60, eta % 60);
+      fprintf(stderr, "\r%3d%%  %llu/%llu MB  %.1f MB/s  ETA %u:%02u%s", pct,
+              done >> 20, total >> 20, rate, eta / 60, eta % 60, eol);
     }
-    if (done == total) fprintf(stderr, "\n");
+    if (done == total && tty) fprintf(stderr, "\n");
     last = pct;
   }
 }

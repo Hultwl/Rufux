@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.9.1
+
+- Windows User Experience dialog: every bypass/tweak checkbox now
+  defaults to unchecked. Previously most of them (TPM/Secure Boot/RAM
+  bypass, skip privacy questions, disable BitLocker, match this user's
+  regional options) defaulted to on; each one is now opt-in.
+- Fixed the GUI's progress bar staying at 0% until a write finished.
+  The `create` worker reports progress with `\r` (a terminal-style
+  redraw), but the GUI reads its output a line at a time, so updates
+  with no `\n` were never delivered until the final line arrived. The
+  worker now uses `\n` between updates whenever its output isn't a
+  terminal (i.e. when the GUI is reading it), so the bar updates live.
+
 ## 1.9
 
 - The interface is GTK4 now, not Qt6. Same window as before - same

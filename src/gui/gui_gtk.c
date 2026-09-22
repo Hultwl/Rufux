@@ -589,16 +589,16 @@ static gboolean ask_windows_options(App *a, char *wue_out, size_t wue_cap, GPtrA
 
   WueWidgets w = {0};
   w.bypass = gtk_check_button_new_with_label("Remove requirement for 4GB+ RAM, Secure Boot and TPM 2.0");
-  gtk_check_button_set_active(GTK_CHECK_BUTTON(w.bypass), wue_get_bool(kf, "bypass", TRUE));
+  gtk_check_button_set_active(GTK_CHECK_BUTTON(w.bypass), wue_get_bool(kf, "bypass", FALSE));
   gtk_box_append(GTK_BOX(box), w.bypass);
 
   w.nro = gtk_check_button_new_with_label("Remove requirement for an online Microsoft account");
-  gtk_check_button_set_active(GTK_CHECK_BUTTON(w.nro), wue_get_bool(kf, "nro", TRUE));
+  gtk_check_button_set_active(GTK_CHECK_BUTTON(w.nro), wue_get_bool(kf, "nro", FALSE));
   gtk_box_append(GTK_BOX(box), w.nro);
 
   GtkWidget *user_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
   w.user_on = gtk_check_button_new_with_label("Create a local account with username:");
-  gboolean user_on_default = wue_get_bool(kf, "user_on", TRUE);
+  gboolean user_on_default = wue_get_bool(kf, "user_on", FALSE);
   gtk_check_button_set_active(GTK_CHECK_BUTTON(w.user_on), user_on_default);
   char *saved_user = g_key_file_get_string(kf, "wue", "user", NULL);
   w.user_entry = gtk_entry_new();
@@ -612,15 +612,15 @@ static gboolean ask_windows_options(App *a, char *wue_out, size_t wue_cap, GPtrA
   gtk_box_append(GTK_BOX(box), user_row);
 
   w.locale = gtk_check_button_new_with_label("Set regional options to the same values as this user's");
-  gtk_check_button_set_active(GTK_CHECK_BUTTON(w.locale), wue_get_bool(kf, "locale", TRUE));
+  gtk_check_button_set_active(GTK_CHECK_BUTTON(w.locale), wue_get_bool(kf, "locale", FALSE));
   gtk_box_append(GTK_BOX(box), w.locale);
 
   w.privacy = gtk_check_button_new_with_label("Disable data collection (Skip privacy questions)");
-  gtk_check_button_set_active(GTK_CHECK_BUTTON(w.privacy), wue_get_bool(kf, "privacy", TRUE));
+  gtk_check_button_set_active(GTK_CHECK_BUTTON(w.privacy), wue_get_bool(kf, "privacy", FALSE));
   gtk_box_append(GTK_BOX(box), w.privacy);
 
   w.bitlocker = gtk_check_button_new_with_label("Disable BitLocker automatic device encryption");
-  gtk_check_button_set_active(GTK_CHECK_BUTTON(w.bitlocker), wue_get_bool(kf, "bitlocker", TRUE));
+  gtk_check_button_set_active(GTK_CHECK_BUTTON(w.bitlocker), wue_get_bool(kf, "bitlocker", FALSE));
   gtk_box_append(GTK_BOX(box), w.bitlocker);
 
   w.qol = gtk_check_button_new_with_label(
