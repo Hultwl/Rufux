@@ -16,7 +16,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y -qq cmake gcc pkg-config \
-            qt6-base-dev libudev-dev libblkid-dev libssl-dev gettext curl \
+            libgtk-4-dev libudev-dev libblkid-dev libssl-dev gettext curl \
             util-linux dosfstools exfatprogs e2fsprogs mtools ntfs-3g \
             syslinux libarchive-tools p7zip-full xorriso udisks2 \
             wimtools libhivex-bin gawk genisoimage python3
