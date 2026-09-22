@@ -762,6 +762,9 @@ static void on_worker_line(GObject *stream, GAsyncResult *res, gpointer data) {
     int pct = -1, consumed = 0;
     if (sscanf(part, "%d%%%n", &pct, &consumed) == 1 && pct >= 0 && pct <= 100) {
       gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(a->bar), pct / 100.0);
+      char pctbuf[8];
+      snprintf(pctbuf, sizeof pctbuf, "%d%%", pct);
+      gtk_progress_bar_set_text(GTK_PROGRESS_BAR(a->bar), pctbuf);
       char *rest = part + consumed;
       g_strstrip(rest);
       if (!*rest) continue;
@@ -916,7 +919,7 @@ static void on_start_clicked(GtkButton *btn, gpointer data) {
 
   a->last_error[0] = 0;
   gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(a->bar), 0);
-  gtk_progress_bar_set_text(GTK_PROGRESS_BAR(a->bar), "%");
+  gtk_progress_bar_set_text(GTK_PROGRESS_BAR(a->bar), "0%");
   char *startmsg = g_strdup_printf("Starting: %s -> %s", mode, dst);
   log_line(a, startmsg);
   g_free(startmsg);
