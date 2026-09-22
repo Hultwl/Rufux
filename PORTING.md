@@ -20,7 +20,7 @@ kept in the tree for reference and are not compiled. The Linux code is in
 | Formatting (VDS, `FormatEx`) | `mkfs.vfat`, `mkfs.ntfs`, `mkfs.exfat`, `mkfs.ext4`, `mkudffs` |
 | Partitioning (`IOCTL_DISK_*`) | `sfdisk` scripts |
 | Raw disk access | `open()` with `O_EXCL`, `fsync`, `BLKRRPART` |
-| Dialogs | Qt6 |
+| Dialogs | GTK4 |
 | Administrator rights | `pkexec` for the worker, the window stays unprivileged |
 | Mounting | `udisksctl` |
 

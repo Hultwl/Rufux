@@ -1,13 +1,13 @@
 # Maintainer: Hultwl <Hultwl@users.noreply.github.com>
 pkgname=rufux
-pkgver=1.8
+pkgver=1.9
 pkgrel=1
 pkgdesc="Rufux — bootable USB creator for Linux (Rufus port)"
 arch=('x86_64' 'aarch64')
 url="https://github.com/Hultwl/Rufux"
 license=('GPL-3.0-or-later')
-depends=('qt6-base' 'hicolor-icon-theme' 'openssl' 'udisks2' 'util-linux')
-makedepends=('cmake' 'gcc' 'pkgconf' 'gettext' 'qt6-tools')
+depends=('gtk4' 'hicolor-icon-theme' 'openssl' 'udisks2' 'util-linux')
+makedepends=('cmake' 'gcc' 'pkgconf' 'gettext')
 optdepends=(
   'dosfstools: FAT32 formatting (mkfs.vfat)'
   'ntfsprogs: NTFS formatting (mkfs.ntfs)'

@@ -76,7 +76,7 @@ ctest --test-dir build
 sudo cmake --install build
 ```
 
-Build needs Qt6 (Widgets, Concurrent), OpenSSL and CMake. At run time it uses
+Build needs GTK4, OpenSSL and CMake. At run time it uses
 `dosfstools`, `ntfs-3g`, `exfatprogs`, `e2fsprogs`, `util-linux`, `udisks2`,
 `polkit` and `p7zip`. For the Windows 11 checks bypass and FAT32 with a large
 `install.wim` you also want `wimlib` and `hivex`. Package names per

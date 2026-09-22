@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.9
+
+- The interface is GTK4 now, not Qt6. Same window as before - same
+  sections, same wording, same field order, same command line built for
+  the `create` worker - only the toolkit changed.
+- GTK4 draws its own window decorations and follows the desktop's
+  light/dark setting natively, through the settings portal when
+  sandboxed (as in the AppImage), with no extra plugin or pinned toolkit
+  version needed. This is what the previous Qt build had to work around
+  with a bundled GNOME decoration plugin and a specific newer Qt version;
+  GTK4 does not need either.
+- The AppImage now bundles GTK4 via `linuxdeploy-plugin-gtk` instead of
+  Qt6 via `linuxdeploy-plugin-qt`. The bundled-tools list (mkfs.*, sfdisk,
+  wimlib-imagex, hivexsh, syslinux, 7z, curl, udisksctl) and the
+  library-resolution check are unchanged.
+- All disk-facing logic is unchanged from 1.8: device scanning, ISO
+  probing, partitioning, formatting, Windows media, and the CLI are the
+  same code, called the same way, whether from the GTK window or from the
+  command line.
+
 ## 1.8
 
 - Every command line option is checked against a full list for its command.

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Rufux VERSION 1.8 LANGUAGES C CXX)
+project(Rufux VERSION 1.9 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -13,11 +13,12 @@ add_compile_definitions(RUFUX_LOCALEDIR="${CMAKE_INSTALL_PREFIX}/share/locale")
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(CRYPTO REQUIRED libcrypto)
 
-# The interface is Qt6. Without it the build is command-line only.
-set(RUFUX_GUI "auto" CACHE STRING "GUI toolkit: auto, qt or none")
-set_property(CACHE RUFUX_GUI PROPERTY STRINGS auto qt none)
-if(RUFUX_GUI STREQUAL "auto" OR RUFUX_GUI STREQUAL "qt")
-  find_package(Qt6 QUIET COMPONENTS Widgets Concurrent DBus)
+# The interface is GTK4, mirroring Rufus's own window. Without it the
+# build is command-line only.
+set(RUFUX_GUI "auto" CACHE STRING "GUI toolkit: auto, gtk or none")
+set_property(CACHE RUFUX_GUI PROPERTY STRINGS auto gtk none)
+if(RUFUX_GUI STREQUAL "auto" OR RUFUX_GUI STREQUAL "gtk")
+  pkg_check_modules(GTK4 gtk4)
 endif()
 
 option(RUFUX_NLS "Native language support (gettext)" ON)
@@ -51,12 +52,14 @@ add_executable(rufux
 target_include_directories(rufux PRIVATE src/linux src)
 
 # Exactly one of the two provides rufux_gui_run.
-if(Qt6_FOUND AND (RUFUX_GUI STREQUAL "auto" OR RUFUX_GUI STREQUAL "qt"))
-  message(STATUS "Qt6 found, building the interface")
-  target_sources(rufux PRIVATE src/gui/gui_qt.cpp)
-  target_link_libraries(rufux PRIVATE Qt6::Widgets Qt6::Concurrent Qt6::DBus)
+if(GTK4_FOUND AND (RUFUX_GUI STREQUAL "auto" OR RUFUX_GUI STREQUAL "gtk"))
+  message(STATUS "GTK4 found, building the interface")
+  target_sources(rufux PRIVATE src/gui/gui_gtk.c)
+  target_include_directories(rufux PRIVATE ${GTK4_INCLUDE_DIRS})
+  target_link_directories(rufux PRIVATE ${GTK4_LIBRARY_DIRS})
+  target_link_libraries(rufux PRIVATE ${GTK4_LIBRARIES} ${CRYPTO_LIBRARIES})
 else()
-  message(STATUS "Qt6 not found, building command-line only")
+  message(STATUS "GTK4 not found, building command-line only")
   target_sources(rufux PRIVATE src/gui/gui_stub.c)
 endif()
 
