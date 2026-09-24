@@ -1,6 +1,6 @@
 # Maintainer: Hultwl <Hultwl@users.noreply.github.com>
 pkgname=rufux
-pkgver=1.9.1
+pkgver=2.0
 pkgrel=1
 pkgdesc="Rufux — bootable USB creator for Linux (Rufus port)"
 arch=('x86_64' 'aarch64')
@@ -18,9 +18,11 @@ optdepends=(
   'wimlib: Windows 11 checks bypass inside boot.wim (wimlib-imagex)'
   'hivex: offline registry editing for the bypass (hivexsh)'
   'syslinux: BIOS/GPT MBR + syslinux install'
-  'grub: GRUB bootloader install'
+  'grub: legacy BIOS boot for Windows media (grub-mkimage, grub-bios-setup)'
+  'smartmontools: drive health check before writing (smartctl)'
+  'qemu-img: VHDX, VMDK, QCOW2, VDI and dynamic VHD images (qemu-img)'
   'xorriso: ISO building for tests'
-  'curl: release update checks'
+  'curl: Windows ISO download and release update checks'
   'polkit: privilege escalation via pkexec'
 )
 source=("git+https://github.com/Hultwl/Rufux.git#tag=v${pkgver}")

@@ -17,7 +17,7 @@ kept in the tree for reference and are not compiled. The Linux code is in
 | Rufus (Windows) | Rufux (Linux) |
 |---|---|
 | Device enumeration (SetupDi) | sysfs and `BLKGETSIZE64` |
-| Formatting (VDS, `FormatEx`) | `mkfs.vfat`, `mkfs.ntfs`, `mkfs.exfat`, `mkfs.ext4`, `mkudffs` |
+| Formatting (VDS, `FormatEx`) | `mkfs.vfat` (FAT32/FAT16), `mkfs.ntfs`, `mkfs.exfat`, `mkfs.ext4` (ext2/3/4 by `-t`), `mkudffs` |
 | Partitioning (`IOCTL_DISK_*`) | `sfdisk` scripts |
 | Raw disk access | `open()` with `O_EXCL`, `fsync`, `BLKRRPART` |
 | Dialogs | GTK4 |
@@ -52,11 +52,15 @@ answer file with a `windowsPE` pass. Other options go to
 | Feature | Status | Notes |
 |---|---|---|
 | MD5, SHA-1, SHA-256, SHA-512 | Works | OpenSSL |
-| Fixed VHD images | Works | Footer checked; dynamic VHD and VHDX are refused |
+| Fixed VHD images | Works | Footer checked |
+| Dynamic VHD, VHDX, VMDK, QCOW2, VDI | Works | `qemu-img convert` onto the target; images with backing files or foreign extents are refused; consistency-checked first |
+| Drive health | Works | `smartctl`; only a failing verdict blocks a write |
+| Revoked UEFI bootloaders | Works | DBX hashes and certificates, SBAT, boot manager SVN (`bootcheck.c`, from `hash.c`); the `pe256ssp` list Rufus downloads is not used |
+| Legacy BIOS boot, Windows media | Works (MBR) | GRUB 2 in the MBR gap runs `ntldr /bootmgr` on FAT32/NTFS; GPT stays UEFI-only |
 | Bad-block scan | Works | Read-only by default, `--write-patterns` writes test patterns |
 | FreeDOS | Works | DOS boot records |
 | Windows install media | Works | UEFI boot; see the limits in the README |
 | ReFS | No | No Linux formatter exists |
-| Windows ISO download | No | Microsoft has no public API for it |
+| Windows ISO download | Works | The protocol of Fido (session, SKU lookup, link request). Microsoft documents none of it, so it can break; tested here against a stand-in server only |
 | Windows To Go | No | |
 | Language button | No | |

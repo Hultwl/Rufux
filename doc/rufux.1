@@ -18,7 +18,7 @@ rufux \- bootable USB creator for Linux (Rufus port)
 \fIpartition\fR \fIDST\fR \-\-scheme gpt|dos \-\-layout single|esp+main [\-\-real] [\-\-yes] ...
 .br
 .B rufux
-\fIformat\fR \fIDST\fR \-\-fs vfat|ntfs|exfat|ext4|udf [\-\-label \fIL\fR] [\-\-real] [\-\-yes] ...
+\fIformat\fR \fIDST\fR \-\-fs vfat|fat16|ntfs|exfat|ext2|ext3|ext4|udf [\-\-label \fIL\fR] [\-\-real] [\-\-yes] ...
 .br
 .B rufux
 \fIextract\fR \fISRC\fR \fIDEST_DIR\fR [\-\-dry\-run]
@@ -42,13 +42,19 @@ rufux \- bootable USB creator for Linux (Rufus port)
 \fIvalidate\-efi\fR \fIFILE\fR
 .br
 .B rufux
+\fIsmart\fR \fIDEV\fR
+.br
+.B rufux
+\fIcheck\-boot\fR \fIFILE.efi\fR|\fIDIR\fR
+.br
+.B rufux
 \fIupdate\-check\fR
 .br
 .B rufux
-\fIcreate\fR \fISRC\fR|\fInone\fR \fIDST\fR \-\-mode dd|extract|format|dos|windows [\-\-scheme \fIS\fR] [\-\-fs \fIF\fR] [\-\-persist\-mb \fIN\fR] [\-\-wue bypass,nro,privacy,all,none] ...
+\fIcreate\fR \fISRC\fR|\fInone\fR \fIDST\fR \-\-mode dd|extract|format|dos|windows [\-\-scheme \fIS\fR] [\-\-fs \fIF\fR] [\-\-persist\-mb \fIN\fR] [\-\-wue bypass,nro,privacy,all,none] [\-\-ignore\-smart] ...
 .br
 .B rufux
-\fIdownload\-windows\fR
+\fIdownload\-windows\fR [\-\-list|\-\-list\-langs] [\-\-version 11|10] [\-\-edition \fIN\fR] [\-\-lang \fINAME\fR] [\-\-arch x64|ARM64|x86] [\-\-out \fIDIR\fR] [\-\-url\-only]
 .br
 .B rufux
 \fI\-\-gui\fR [\-\-theme system|dark|light]
@@ -59,6 +65,22 @@ and root (sudo/pkexec). The GUI itself always runs unprivileged and
 asks for elevation per operation: pressing START spawns the worker as
 root through pkexec (desktop password prompt, no terminal needed),
 streaming its progress back into the window.
+.SH NEW IN 2.0
+.TP
+.B smart DEV
+Asks smartctl for the drive's health. A drive that reports itself as failing is refused by \fBcreate\fR unless \fB\-\-ignore\-smart\fR is given; drives that report nothing (most USB sticks) are never blocked.
+.TP
+.B check\-boot
+Checks UEFI bootloaders against the Secure Boot revocation lists (DBX hashes and certificates, SBAT, boot manager security version). Exit status 4 when one is revoked. \fBcreate\fR runs the same check on what it copies and warns.
+.TP
+.B download\-windows
+Downloads a Windows 11 or 10 ISO from Microsoft's download service, the same way Rufus's Fido script does. \fB\-\-list\fR shows versions and editions, \fB\-\-list\-langs\fR the languages. A partial download is resumed. Microsoft rate-limits by address.
+.TP
+.B Virtual disks
+\fBwrite\fR and \fBcreate \-\-mode dd\fR expand VHDX, dynamic VHD, VMDK, QCOW2 and VDI images with qemu-img. Images that refer to other files are refused.
+.TP
+.B Windows media, MBR scheme
+Also gets legacy BIOS boot code (GRUB 2 in the gap before the first partition, which starts bootmgr) for both FAT32 and NTFS. GPT drives boot on UEFI only.
 .SH EXAMPLES
 List removable drives:
 .PP

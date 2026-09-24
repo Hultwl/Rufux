@@ -45,19 +45,36 @@ drawn with your desktop's own widget style and file dialogs.
   Rufus has: skip the RAM/Secure Boot/TPM checks, skip the online account,
   create a local account, copy your regional options, skip the privacy
   questions, no BitLocker auto-encryption, and the QoL tweaks.
+  MBR sticks (FAT32 or NTFS) also boot on legacy BIOS machines.
+- **Download Windows 11 or 10.** The DOWNLOAD button next to SELECT asks
+  Microsoft's own download service for the official ISO (version, edition,
+  language, architecture), saves it, and selects it. It works the way Rufus's
+  Fido script does. Microsoft can change or rate-limit that service.
 - **FreeDOS** sticks, **non bootable** drives, persistence for Linux live
   images, bad-block checks, checksums (MD5, SHA-1, SHA-256, SHA-512).
+- **File systems:** FAT32, FAT16, NTFS, exFAT, UDF, ext2, ext3, ext4.
+- **Virtual disk images.** VHDX, dynamic VHD, VMDK, QCOW2 and VDI are expanded
+  onto the drive (through `qemu-img`, with an optional verify). Images that
+  point at other files are refused.
+- **Drive health.** A drive whose SMART status says it is failing is refused
+  (override with `--ignore-smart`). Most USB sticks report nothing, which is fine.
+- **Secure Boot check.** Bootloaders that end up on the drive are checked
+  against the UEFI revocation list (DBX), SBAT and the Windows boot manager
+  version, and you get a warning if firmware that is up to date will refuse them.
 - **Safety.** The command line only prints a plan unless you pass
   `--real --yes` and run as root. Fixed disks are hidden unless you tick
   "List USB Hard Drives".
 
 ## Limits
 
-- Windows sticks made with NTFS boot on UEFI machines only. Legacy BIOS boot
-  from NTFS needs a boot loader that Linux formatting tools do not write.
-- FAT32 Windows sticks also have no legacy BIOS boot code yet.
-- Not there: ReFS, downloading Windows ISOs, Windows To Go, the language
-  button. See [PORTING.md](PORTING.md).
+- Legacy BIOS boot for Windows media needs the MBR scheme. GPT drives boot on
+  UEFI machines only. (It uses GRUB 2 in the gap before the first partition to
+  start `bootmgr`, because Linux cannot write Windows' own NTFS loader.)
+- The Windows download depends on a Microsoft web service I do not control. The
+  Windows edition list comes from Fido and needs updating when Microsoft
+  publishes a new release.
+- The revocation lists are a snapshot; they age until the next release.
+- Not there: ReFS, Windows To Go, the language button. See [PORTING.md](PORTING.md).
 
 ## Install
 

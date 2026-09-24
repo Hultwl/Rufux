@@ -1,5 +1,34 @@
 # Changelog
 
+## 2.0
+
+- **Download Windows 11 or 10 from inside Rufux.** A DOWNLOAD button next to
+  SELECT opens a small window: version, edition, language, architecture,
+  folder. It asks Microsoft's own download service for the official ISO (the
+  protocol of Rufus's Fido script), shows the progress, resumes a partial
+  file, and selects the ISO when it is done. `rufux download-windows` does the
+  same from the command line (`--list`, `--list-langs`, `--url-only`). This
+  depends on a service Microsoft does not document; it can change or rate-limit.
+- **Windows sticks boot on legacy BIOS machines too** (MBR scheme, FAT32 or
+  NTFS). GRUB 2 goes in the gap before the first partition and starts `bootmgr`.
+  This replaces the "UEFI only" note. GPT drives are unchanged.
+- **Virtual disk images:** VHDX, dynamic VHD, VMDK, QCOW2 and VDI are expanded
+  onto the drive through `qemu-img`, with an optional verify. An image that
+  refers to another file (a backing file, a VMDK extent elsewhere) is refused,
+  and so is one that fails its consistency check.
+- **Drive health.** The SMART status is read before writing (`smartctl`); a
+  drive that reports itself as failing is refused unless `--ignore-smart` is
+  given. `rufux smart DEV` shows it. Drives that report nothing are not blocked.
+- **Secure Boot revocation check.** Bootloaders copied to the drive are checked
+  against the UEFI DBX (hashes and certificates), SBAT and the Windows boot
+  manager version, and a revoked one is reported in the log. `rufux check-boot`
+  does it for a file or folder.
+- **More file systems:** FAT16 and real ext2 and ext3. Before, ext2 and ext3
+  were silently formatted as ext4. FAT16 refuses a volume over 4 GiB.
+- The AppImage carries the new helpers (smartctl, qemu-img, GRUB's tools with a
+  400 KB slice of its modules). Expect about 4 MB more.
+- Still missing: ReFS, Windows To Go, the language button.
+
 ## 1.9.1
 
 - Windows User Experience dialog: every bypass/tweak checkbox now
