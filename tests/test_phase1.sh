@@ -96,8 +96,10 @@ if "$RUFUX" write "$FAKE" "$DST" --dry-run >/dev/null 2>&1; then bad "file targe
 # 8. safety: source and target must differ
 if "$RUFUX" write "$FAKE" "$FAKE" --dry-run --allow-file >/dev/null 2>&1; then bad "src==dst should fail"; else ok "src==dst refused"; fi
 
-# 9. download-windows explains itself (no fake downloader)
-if "$RUFUX" download-windows 2>&1 | grep -q "microsoft.com"; then ok "download-windows guidance"; else bad "download-windows guidance"; fi
+# 9. download-windows lists what it can fetch without touching the network, and rejects bad input
+# (the real download is covered by test_msdl.sh against a local stand-in server)
+if "$RUFUX" download-windows --list 2>&1 | grep -q "Windows 11"; then ok "download-windows --list"; else bad "download-windows --list"; fi
+if "$RUFUX" download-windows --version 12 >/dev/null 2>&1; then bad "download-windows accepted version 12"; else ok "download-windows rejects an unknown version"; fi
 
 echo "--- $pass passed, $fail failed ---"
 [ "$fail" -eq 0 ]
