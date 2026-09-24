@@ -19,7 +19,9 @@ jobs:
             libgtk-4-dev libudev-dev libblkid-dev libssl-dev gettext curl \
             util-linux dosfstools exfatprogs e2fsprogs mtools ntfs-3g \
             syslinux libarchive-tools p7zip-full xorriso udisks2 \
-            wimtools libhivex-bin gawk genisoimage python3
+            wimtools libhivex-bin gawk genisoimage python3 \
+            smartmontools qemu-utils grub-pc-bin grub-common sbsigntool openssl \
+            qemu-system-x86 fdisk parted udftools
       - name: Configure
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
       - name: Build

@@ -25,7 +25,9 @@ jobs:
             util-linux dosfstools exfatprogs e2fsprogs mtools ntfs-3g \
             syslinux libarchive-tools p7zip-full xorriso udisks2 \
             wimtools libhivex-bin gawk genisoimage python3 xvfb \
-            parted udftools libgtk-4-dev patchelf librsvg2-dev
+            parted udftools libgtk-4-dev patchelf librsvg2-dev \
+            smartmontools qemu-utils grub-pc-bin grub-common sbsigntool openssl \
+            qemu-system-x86 fdisk
 
       - name: Configure and build
         # GTK4 follows the desktop's theme and draws its own window
@@ -45,8 +47,9 @@ jobs:
       - name: Bundle helper tools
         # Rufux shells out to distro tools instead of linking them in.
         # Ship them inside the AppImage so hosts need nothing installed
-        # except the udisks2 daemon (mounts) and grub (GRUB mode only;
-        # its module tree is too big to bundle). linuxdeploy -e pulls
+        # except the udisks2 daemon (mounts). GRUB's tools ride along too, with
+        # its module tree pruned to the ~400 KB Windows BIOS boot uses
+        # (packaging/prune-grub.sh). linuxdeploy -e pulls
         # each binary plus its shared libraries; AppDir/usr/bin is on
         # PATH at runtime so rufux_have() finds them with no code
         # changes. syslinux MBR data rides along under
@@ -54,8 +57,7 @@ jobs:
         # exe-relative); payloads and locales are already installed
         # there by cmake, resolved the same way (wininstall.c, i18n.h).
         # udevadm stays host-side (it is systemd itself, guarded by
-        # rufux_have); grub too (module tree too big). mtools, gawk,
-        # xorriso are unused at runtime.
+        # rufux_have). mtools, gawk, xorriso are unused at runtime.
         run: |
           # Deploy one tool: resolve symlinks (mkfs.vfat -> mkfs.fat),
           # require ELF (wrapper scripts killed two CI runs already),
@@ -86,6 +88,14 @@ jobs:
           # 7z is a wrapper script on Debian/Ubuntu (and Arch): deploy
           # the real backend behind it.
           deploy_tool 7z 7zz 7za 7zr /usr/lib/7zip/7z
+          # 2.0 additions: drive health (SMART), VHDX/VMDK/QCOW2/VDI expansion, and the
+          # GRUB tools that give Windows sticks legacy BIOS boot.
+          for t in smartctl qemu-img grub-mkimage; do
+            deploy_tool "$t" "$t"
+          done
+          # grub-bios-setup is not on PATH on Debian/Ubuntu; it lives with the modules.
+          deploy_tool grub-bios-setup grub-bios-setup /usr/lib/grub/i386-pc/grub-bios-setup /usr/lib/grub2/i386-pc/grub-bios-setup
+          packaging/prune-grub.sh /usr/lib/grub/i386-pc AppDir/usr/lib/grub/i386-pc
           mkdir -p AppDir/usr/share/syslinux
           cp /usr/lib/syslinux/mbr/*.bin AppDir/usr/share/syslinux/
           ls AppDir/usr/share/syslinux/
@@ -130,17 +140,21 @@ jobs:
         # Every helper must have landed in AppDir/usr/bin with
         # resolvable libraries, plus the syslinux MBR data.
         run: |
-          for t in mkfs.vfat mkfs.ntfs ntfsfix mkfs.exfat mkfs.ext4 mkfs.udf sfdisk partprobe bsdtar 7z wimlib-imagex hivexsh syslinux udisksctl curl; do
+          for t in mkfs.vfat mkfs.ntfs ntfsfix mkfs.exfat mkfs.ext4 mkfs.udf sfdisk partprobe bsdtar 7z wimlib-imagex hivexsh syslinux udisksctl curl smartctl qemu-img grub-mkimage grub-bios-setup; do
             [ -x "AppDir/usr/bin/$t" ] || { echo "not bundled: $t"; exit 1; }
           done
           [ -f AppDir/usr/share/syslinux/mbr.bin ] || { echo "mbr.bin missing"; exit 1; }
           [ -f AppDir/usr/share/syslinux/gptmbr.bin ] || { echo "gptmbr.bin missing"; exit 1; }
+          for f in boot.img kernel.img diskboot.img lzma_decompress.img ntfs.mod fat.mod ntldr.mod; do
+            [ -f "AppDir/usr/lib/grub/i386-pc/$f" ] || { echo "GRUB file missing: $f"; exit 1; }
+          done
+          [ -f AppDir/usr/share/rufux/dbx/dbx_x64.efiauth2 ] || { echo "DBX revocation data missing"; exit 1; }
           missing="$(find AppDir/usr/bin AppDir/usr/lib -type f -executable 2>/dev/null | while read -r f; do ldd "$f" 2>/dev/null; done | grep 'not found' || true)"
           [ -z "$missing" ] || { echo "unresolved libraries:$missing"; exit 1; }
           # Presence is not enough (a wrapper script passed this once):
           # execute the key bundled helpers.
           AppDir/usr/bin/7z i >/dev/null || { echo "bundled 7z broken"; exit 1; }
-          for v in "bsdtar --version" "sfdisk --version" "curl --version" "wimlib-imagex --version"; do
+          for v in "bsdtar --version" "sfdisk --version" "curl --version" "wimlib-imagex --version" "smartctl --version" "qemu-img --version" "grub-mkimage --version"; do
             # shellcheck disable=SC2086
             AppDir/usr/bin/$v >/dev/null || { echo "bundled $v broken"; exit 1; }
           done
