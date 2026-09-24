@@ -160,7 +160,7 @@ jobs:
           AppDir/usr/bin/7z i >/dev/null || { echo "bundled 7z broken"; exit 1; }
           # ...and it has to really open an ISO (UDF/ISO9660 extraction needs it).
           mkdir -p /tmp/7ztest && echo hello > /tmp/7ztest/f.txt && genisoimage -quiet -o /tmp/7ztest.iso /tmp/7ztest
-          AppDir/usr/bin/7z l /tmp/7ztest.iso | grep -q "f.txt" || { echo "bundled 7z cannot open an ISO"; exit 1; }
+          AppDir/usr/bin/7z l /tmp/7ztest.iso | grep -qi "f.txt" || { echo "bundled 7z cannot open an ISO"; exit 1; }
           for v in "bsdtar --version" "sfdisk --version" "curl --version" "wimlib-imagex --version" "smartctl --version" "qemu-img --version" "grub-mkimage --version"; do
             # shellcheck disable=SC2086
             AppDir/usr/bin/$v >/dev/null || { echo "bundled $v broken"; exit 1; }
