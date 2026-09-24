@@ -27,7 +27,14 @@ jobs:
       - name: Build
         run: cmake --build build
       - name: Test
-        run: ctest --test-dir build --output-on-failure
+        shell: bash
+        run: |
+          set +e
+          ctest --test-dir build --output-on-failure | tee ctest-user.log
+          rc=${PIPESTATUS[0]}
+          # Put the failing tests and their last lines where the checks API can show them.
+          [ $rc = 0 ] || echo "::error::ctest failed: $(grep -E 'Failed|\*\*\*|FAIL|error' ctest-user.log | head -25 | tr '\n' ';' | head -c 1800)"
+          exit $rc
       - name: Test as root
         # The tests that matter most (partition tables, file systems, boot.wim
         # edits, WIM splitting) need root and loop devices, so as a normal user
