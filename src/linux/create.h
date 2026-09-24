@@ -22,6 +22,7 @@ typedef struct {
   int uefi_validate; // validate EFI bootloader after extract
   int badblock_passes; // 0 = skip
   int verify; // dd mode: re-read and compare
+  int ignore_smart; // write even when the drive reports a failing SMART status
   int dry_run;
   int allow_fixed;
   int allow_file;

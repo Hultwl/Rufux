@@ -15,6 +15,10 @@
 #include "vhd.h"
 #include "dosboot.h"
 #include "wininstall.h"
+#include "smart.h"
+#include "vdisk.h"
+#include "bootcheck.h"
+#include "biosboot.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -152,10 +156,10 @@ static unsigned long long file_size(const char *p) {
 // FAT32 cannot hold files >= 4GiB: refuse early with a useful message
 // (Rufus solves this with UEFI:NTFS; we point at NTFS/exFAT instead).
 static int vfat_size_guard(const char *src, const char *fs, char *err, unsigned long cap) {
-  if (strcmp(fs, "vfat") && strcmp(fs, "fat32")) return 0;
+  if (!rufux_fs_is_fat(fs)) return 0;
   unsigned long long sz = file_size(src);
   if (sz > 0xFFFFFFFFULL) {
-    snprintf(err, cap, "image is %.1f GiB: FAT32 cannot hold files >= 4 GiB; "
+    snprintf(err, cap, "image is %.1f GiB: FAT cannot hold files >= 4 GiB; "
                        "use --fs ntfs or --fs exfat",
              sz / 1073741824.0);
     return -1;
@@ -250,6 +254,20 @@ static int flow_dd(const char *src, const char *dst, const RufuxCreateOpts *o,
                       .allow_fixed = o->allow_fixed, .allow_file = o->allow_file,
                       .yes = o->yes,
                       .vprog = prog ? (RufuxWriteProgress)mapped : NULL, .vuser = &vm};
+  // VHDX, dynamic VHD, VMDK, QCOW2, VDI: expand onto the drive with qemu-img.
+  RufuxVdisk vd;
+  int vk = rufux_vdisk_detect(src, &vd, err, cap);
+  if (vk < 0) return -1;
+  if (vk > 0) {
+    char vm[256];
+    snprintf(vm, sizeof vm, "%s image detected (%.1f GiB expanded): converting with qemu-img.",
+             vd.label, vd.virtual_size / 1073741824.0);
+    if (log) log(vm, luser);
+    int vrc = rufux_vdisk_write(src, &vd, dst, &w, prog ? (RufuxWriteProgress)mapped : NULL, &wm,
+                                err, cap);
+    if (vrc == 0) stage(prog, puser, 100);
+    return vrc;
+  }
   if (rufux_vhd_adjust(src, &w, log, luser, err, cap) != 0) return -1;
   int rc = rufux_write_image(src, dst, &w, prog ? (RufuxWriteProgress)mapped : NULL, &wm,
                              err, cap);
@@ -329,8 +347,7 @@ static int flow_extract_disk(const char *src, const char *dst, const RufuxCreate
   // BIOS flows need real boot code in the partition, not just an active
   // flag: chainload Syslinux (FAT/ext only; NTFS has its own PBR path).
   if (!strcmp(o->scheme, "dos") &&
-      (!strcmp(o->fs, "vfat") || !strcmp(o->fs, "fat32") ||
-       !strncmp(o->fs, "ext", 3))) {
+      (rufux_fs_is_fat(o->fs) || !strncmp(o->fs, "ext", 3))) {
     if (syslinux_best_effort(p1, log, luser, err, cap) != 0) return -1;
   }
   char mnt[512] = {0};
@@ -349,6 +366,7 @@ static int flow_extract_disk(const char *src, const char *dst, const RufuxCreate
     if (rufux_create_persist(mnt, "casper-rw", o->persist_mb, 0, err, cap) != 0) rc = -1;
   }
   stage(prog, puser, 88);
+  if (!rc) rufux_bootcheck_tree(mnt, log, luser);  // advisory: revoked loaders are reported, not blocked
   if (!rc && o->uefi_validate) {
     char efi[768];
     snprintf(efi, sizeof efi, "%s/EFI/BOOT/bootx64.efi", mnt);
@@ -415,8 +433,7 @@ static int flow_format(const char *dst, const RufuxCreateOpts *o,
     if (rufux_format(p1, &mo, err, cap) != 0) return -1;
     stage(prog, puser, 85);
     if (!strcmp(o->scheme, "dos") &&
-        (!strcmp(o->fs, "vfat") || !strcmp(o->fs, "fat32") ||
-         !strncmp(o->fs, "ext", 3))) {
+        (rufux_fs_is_fat(o->fs) || !strncmp(o->fs, "ext", 3))) {
       if (syslinux_best_effort(p1, log, luser, err, cap) != 0) return -1;
     }
     RufuxBootOpts bo = {.kind = !strcmp(o->scheme, "gpt") ? "gpt" : "bios",
@@ -600,7 +617,7 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
              fat ? "format partition 1 as FAT32" : "write UEFI:NTFS image to partition 2 (raw), format partition 1 as NTFS",
              src, fat ? " (install.wim split with wimlib if over 4 GiB)" : "",
              o->wue ? o->wue : "none",
-             gpt ? "" : "\n  (MBR table: UEFI boot only, no legacy BIOS boot code)");
+             gpt ? "" : "\n  6. install legacy BIOS boot code (GRUB 2 in the MBR gap, starts bootmgr)");
     log(m, luser);
     return 0;
   }
@@ -665,6 +682,7 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
   }
   stage(prog, puser, 88);
   if (!rc) rc = verify_windows_tree(mnt, log, luser, err, cap);
+  if (!rc) rufux_bootcheck_tree(mnt, log, luser);  // advisory
   if (!rc && o->uefi_validate) {
     char efi[768];
     snprintf(efi, sizeof efi, "%s/efi/boot/bootx64.efi", mnt);
@@ -680,6 +698,18 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
     }
   }
   stage(prog, puser, 90);
+  int bios_ok = 0;
+  if (!rc && !gpt) {
+    // MBR drive: make it boot on legacy BIOS machines too. Not fatal: without it the
+    // drive is still a complete UEFI installer, and the log says so.
+    char be[512] = {0};
+    if (log) log("Installing legacy BIOS boot code...", luser);
+    if (rufux_windows_bios_install(dst, mnt, log, luser, be, sizeof be) == 0) bios_ok = 1;
+    else if (log) {
+      snprintf(m, sizeof m, "WARNING: no legacy BIOS boot code: %s. The drive boots on UEFI machines only.", be);
+      log(m, luser);
+    }
+  }
   sync();
   char uerr[512] = {0};
   if (rufux_unmount(p1, 0, uerr, sizeof uerr) != 0 && !rc) {
@@ -695,10 +725,11 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
     if (rufux_run(nf, 0) != 0 && log)
       log("WARNING: could not clear the NTFS dirty flag (ntfsfix failed).", luser);
   }
+  if (!rc && gpt && log)
+    log("NOTE: this GPT drive boots on UEFI machines only (choose the MBR scheme for legacy BIOS boot too).", luser);
   if (!rc && !gpt && log)
-    log(fat ? "NOTE: this FAT32 stick boots on UEFI machines. Legacy BIOS boot code is not written yet."
-            : "NOTE: this NTFS stick boots on UEFI machines only. Legacy BIOS boot needs the "
-              "Windows NTFS loader, which mkfs.ntfs does not write (sectors 1-15 of $Boot).", luser);
+    log(bios_ok ? "This drive boots on both UEFI and legacy BIOS machines."
+                : "NOTE: this drive boots on UEFI machines only (no legacy BIOS boot code was installed).", luser);
   if (!rc) stage(prog, puser, 100);
   return rc;
 }
@@ -724,6 +755,20 @@ int rufux_create(const char *src, const char *dst, const RufuxCreateOpts *o,
     if (unmount_disk(dst, 0, log, luser, err, errcap) != 0) {
       if (!err[0]) snprintf(err, errcap, "cannot unmount %s (close files and retry)", dst);
       return -1;
+    }
+  }
+  // Drive health first: a failing drive is a bad place to put an installer.
+  if (is_block(dst)) {
+    if (o->dry_run) {
+      if (log) log("+ SMART health check (smartctl) [dry-run]", luser);
+    } else {
+      char sm[256];
+      RufuxSmartState ss = rufux_smart_check(dst, sm, sizeof sm);
+      if (log) log(sm, luser);
+      if (ss == RUFUX_SMART_FAILED && !o->ignore_smart) {
+        snprintf(err, errcap, "%s. Refusing to write; use --ignore-smart to override", sm);
+        return -1;
+      }
     }
   }
   // dd layout reserves 0-15 for checks; extract/format start at 0.

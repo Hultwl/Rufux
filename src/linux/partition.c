@@ -126,7 +126,9 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
   // it); every dos/MBR data partition gets flagged bootable.
   const char *mbr_type = "0c";
   if (o->fs_main) {
-    if (!strcmp(o->fs_main, "ntfs") || !strcmp(o->fs_main, "exfat") ||
+    if (!strcmp(o->fs_main, "fat16"))
+      mbr_type = "0e";  // FAT16 with LBA addressing
+    else if (!strcmp(o->fs_main, "ntfs") || !strcmp(o->fs_main, "exfat") ||
         !strcmp(o->fs_main, "udf"))
       mbr_type = "07";
     else if (!strcmp(o->fs_main, "ext4") || !strcmp(o->fs_main, "ext2") ||

@@ -8,6 +8,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <sys/stat.h>
+#include <sys/ioctl.h>
+#include <linux/fs.h>
 
 // First sector of a partition node (sysfs), 0 if unknown. mkfs.ntfs writes
 // this into the BPB "hidden sectors" field, which the NTFS boot record uses
@@ -55,6 +58,25 @@ static unsigned long long settled_part_sectors(const char *dev) {
   return 0;
 }
 
+int rufux_fs_is_fat16(const char *fs) { return fs && !strcmp(fs, "fat16"); }
+int rufux_fs_is_fat(const char *fs) {
+  return fs && (!strcmp(fs, "vfat") || !strcmp(fs, "fat32") || !strcmp(fs, "fat16"));
+}
+
+// Size in bytes of a block device or image file (0 when unknown).
+static unsigned long long dev_bytes(const char *path) {
+  struct stat st;
+  if (stat(path, &st) != 0) return 0;
+  if (S_ISREG(st.st_mode)) return (unsigned long long)st.st_size;
+  unsigned long long b = 0;
+  int fd = open(path, O_RDONLY | O_CLOEXEC);
+  if (fd >= 0) {
+    if (ioctl(fd, BLKGETSIZE64, &b) != 0) b = 0;
+    close(fd);
+  }
+  return b;
+}
+
 int rufux_format(const char *dst, const RufuxMkfsOpts *o,
                  char *err, unsigned long cap) {
   if (!o->fs || (!strcmp(o->fs, "") )) { snprintf(err, cap, "need --fs"); return -1; }
@@ -63,7 +85,7 @@ int rufux_format(const char *dst, const RufuxMkfsOpts *o,
   // instead of partitioning first and dying in mkfs.
   if (o->label && o->label[0]) {
     size_t max = 32;
-    if (!strcmp(o->fs, "vfat") || !strcmp(o->fs, "fat32")) max = 11;
+    if (rufux_fs_is_fat(o->fs)) max = 11;
     else if (!strcmp(o->fs, "exfat")) max = 15;
     else if (!strcmp(o->fs, "ext4") || !strcmp(o->fs, "ext2") || !strcmp(o->fs, "ext3")) max = 16;
     if (strlen(o->label) > max) {
@@ -80,13 +102,26 @@ int rufux_format(const char *dst, const RufuxMkfsOpts *o,
   unsigned long long part_sectors = 0;
   char lab_exfat[160], lab_ext4[160], sec_vfat[32];
   // mkfs.ntfs -F -Q -p S -H 255 -S 63 [-c N] [-L label] dev NULL = 16 slots
-  const char *a_vfat[9], *a_ntfs[18], *a_exfat[5], *a_ext4[7], *a_udf[4];
-  if (!strcmp(o->fs, "vfat") || !strcmp(o->fs, "fat32")) {
+  const char *a_vfat[9], *a_ntfs[18], *a_exfat[5], *a_ext4[9], *a_udf[4];
+  if (rufux_fs_is_fat(o->fs)) {
     if (!rufux_have("mkfs.vfat")) { snprintf(err, cap, "mkfs.vfat missing"); return -1; }
+    int fat16 = rufux_fs_is_fat16(o->fs);
     int i = 0;
-    a_vfat[i++] = "mkfs.vfat"; a_vfat[i++] = "-F"; a_vfat[i++] = "32";
-    if (o->cluster_sectors > 0) {
-      snprintf(sec_vfat, sizeof sec_vfat, "%d", o->cluster_sectors);
+    a_vfat[i++] = "mkfs.vfat"; a_vfat[i++] = "-F"; a_vfat[i++] = fat16 ? "16" : "32";
+    int spc = o->cluster_sectors;
+    if (fat16) {
+      // FAT16 tops out at 65524 clusters of at most 64 KiB, so a volume over 4 GiB
+      // cannot exist, and one over 2 GiB needs 64 KiB clusters (128 sectors).
+      unsigned long long bytes = dev_bytes(dst);
+      if (bytes > (4ULL << 30)) {
+        snprintf(err, cap, "FAT16 volumes are limited to 4 GiB ('%s' is %.1f GiB); use FAT32",
+                 dst, bytes / 1073741824.0);
+        return -1;
+      }
+      if (spc <= 0 && bytes > (2ULL << 30)) spc = 128;
+    }
+    if (spc > 0) {
+      snprintf(sec_vfat, sizeof sec_vfat, "%d", spc);
       a_vfat[i++] = "-s"; a_vfat[i++] = sec_vfat;
     }
     if (o->label && o->label[0]) { snprintf(lab_vfat, sizeof lab_vfat, "%s", o->label); a_vfat[i++] = "-n"; a_vfat[i++] = lab_vfat; }
@@ -133,7 +168,9 @@ int rufux_format(const char *dst, const RufuxMkfsOpts *o,
   } else if (!strcmp(o->fs, "ext4") || !strcmp(o->fs, "ext2") || !strcmp(o->fs, "ext3")) {
     if (!rufux_have("mkfs.ext4")) { snprintf(err, cap, "mkfs.ext4 missing"); return -1; }
     int i = 0;
-    a_ext4[i++] = "mkfs.ext4"; a_ext4[i++] = "-F";
+    // mke2fs picks the file system from -t when given, whatever its own name is,
+    // so ext2/ext3 no longer end up as ext4 (they used to).
+    a_ext4[i++] = "mkfs.ext4"; a_ext4[i++] = "-t"; a_ext4[i++] = o->fs; a_ext4[i++] = "-F";
     if (o->label && o->label[0]) { snprintf(lab_ext4, sizeof lab_ext4, "%s", o->label); a_ext4[i++] = "-L"; a_ext4[i++] = lab_ext4; }
     a_ext4[i++] = dst; a_ext4[i] = NULL; av = a_ext4;
   } else if (!strcmp(o->fs, "udf")) {
@@ -144,7 +181,7 @@ int rufux_format(const char *dst, const RufuxMkfsOpts *o,
       snprintf(err, cap, "ReFS has no Linux formatter (proprietary filesystem); use ntfs");
       return -1;
     }
-    snprintf(err, cap, "unsupported fs '%s' (vfat|ntfs|exfat|ext4|udf)", o->fs);
+    snprintf(err, cap, "unsupported fs '%s' (vfat|fat16|ntfs|exfat|ext2|ext3|ext4|udf)", o->fs);
     return -1;
   }
   if (rufux_run(av, o->dry_run) != 0) {

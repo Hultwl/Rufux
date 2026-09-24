@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <limits.h>
 #include <string.h>
+#include <strings.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <time.h>
@@ -20,7 +21,11 @@
 #include "linux/priv.h"
 #include "linux/secureboot.h"
 #include "linux/update.h"
+#include "linux/smart.h"
+#include "linux/bootcheck.h"
+#include "linux/msdl.h"
 #include "linux/vhd.h"
+#include "linux/vdisk.h"
 #include "linux/exec.h"
 #include "linux/i18n.h"
 #include "linux/create.h"
@@ -37,8 +42,8 @@ static void usage(const char *p) {
          "  %s probe <file.iso> [--detail]\n"
          "  %s checksum <file> [--algo md5|sha1|sha256|sha512]\n"
          "  %s write SRC DST [--dry-run|--real] [--verify] [--allow-fixed] [--allow-file] [--yes]\n"
-         "  %s partition DST --scheme gpt|dos --layout single|esp+main [--fs vfat|ntfs|exfat|ext4] [--dry-run|--real] [--allow-file] [--allow-fixed] [--yes]\n"
-         "  %s format DST --fs vfat|ntfs|exfat|ext4|udf [--label L] [--dry-run|--real] [--allow-file] [--allow-fixed] [--yes]\n"
+         "  %s partition DST --scheme gpt|dos --layout single|esp+main [--fs vfat|fat16|ntfs|exfat|ext2|ext3|ext4] [--dry-run|--real] [--allow-file] [--allow-fixed] [--yes]\n"
+         "  %s format DST --fs vfat|fat16|ntfs|exfat|ext2|ext3|ext4|udf [--label L] [--dry-run|--real] [--allow-file] [--allow-fixed] [--yes]\n"
          "  %s extract SRC.iso DEST_DIR [--dry-run]\n"
          "  %s install-boot DST --mbr bios|gpt [--dry-run|--real] [--allow-file] [--allow-fixed] [--yes]\n"
          "  %s persist DIR --size MB [--label casper-rw] [--dry-run]\n"
@@ -46,11 +51,26 @@ static void usage(const char *p) {
          "  %s mount|umount DEV [--dry-run]\n"
          "  %s secureboot-status\n"
          "  %s validate-efi FILE\n"
+         "  %s smart DEV\n"
+         "  %s check-boot FILE.efi|DIR\n"
          "  %s update-check\n"
-         "  %s create SRC|none DST --mode dd|extract|format|dos|windows [--scheme gpt|dos] [--fs vfat|ntfs|exfat|ext4|udf] [--label L] [--persist-mb N] [--cluster-sectors N] [--badblock-passes N] [--wue bypass,nro,privacy,bitlocker,locale,qol,user=NAME,all,none] [--split-wim MB] [--locale TAG] [--keyboard KLID] [--timezone ZONE] [--quick|--full] [--no-autorun] [--uefi-validate] [--dry-run|--real] [--allow-file] [--allow-fixed] [--yes] [--verify]\n"
-         "  %s download-windows\n"
+         "  %s create SRC|none DST --mode dd|extract|format|dos|windows [--scheme gpt|dos] [--fs vfat|fat16|ntfs|exfat|ext2|ext3|ext4|udf] [--label L] [--persist-mb N] [--cluster-sectors N] [--badblock-passes N] [--wue bypass,nro,privacy,bitlocker,locale,qol,user=NAME,all,none] [--split-wim MB] [--locale TAG] [--keyboard KLID] [--timezone ZONE] [--quick|--full] [--no-autorun] [--uefi-validate] [--ignore-smart] [--dry-run|--real] [--allow-file] [--allow-fixed] [--yes] [--verify]\n"
+         "  %s download-windows [--list | --list-langs] [--version 11|10] [--edition N] [--lang NAME] [--arch x64|ARM64|x86] [--out DIR] [--url-only]\n"
          "  %s --gui [--theme system|dark|light]\n",
-         RUFUX_VERSION, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p);
+         RUFUX_VERSION, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p);
+}
+
+// Download progress: a redrawn line on a terminal, one "N%" line per percent otherwise
+// (the GUI's progress bar reads those).
+static void dl_progress(unsigned long long done, unsigned long long total, void *u) {
+  (void)u;
+  static int last = -1;
+  int pct = total ? (int)(done * 100 / total) : 0;
+  if (pct == last) return;
+  last = pct;
+  if (isatty(fileno(stderr))) fprintf(stderr, "\rDownloading... %d%%%s", pct, pct >= 100 ? "\n" : "");
+  else fprintf(stderr, "%d%%\n", pct);
+  fflush(stderr);
 }
 
 static void cli_progress(unsigned long long done, unsigned long long total, void *u) {
@@ -125,10 +145,12 @@ static const CmdSpec specs[] = {
   {"umount", "--dry-run", ""},
   {"secureboot-status", "", ""},
   {"validate-efi", "", ""},
+  {"smart", "", ""},
+  {"check-boot", "", ""},
   {"update-check", "", ""},
-  {"download-windows", "", ""},
+  {"download-windows", "--list --list-langs --url-only", "--arch --edition --lang --out --version"},
   {"create",
-   "--allow-file --allow-fixed --dry-run --full --no-autorun --quick --real --uefi-validate --verify --yes",
+   "--allow-file --allow-fixed --dry-run --full --ignore-smart --no-autorun --quick --real --uefi-validate --verify --yes",
    "--badblock-passes --cluster-sectors --fs --keyboard --label --locale --mode --persist-mb --scheme "
    "--split-wim --timezone --wue"},
 };
@@ -309,6 +331,22 @@ int main(int argc, char **argv) {
     if (!o.dry_run && rufux_need_root_for_block(argv[3], err, sizeof err) != 0) {
       fprintf(stderr, "write failed: %s\n", err);
       return 3;
+    }
+    {
+      RufuxVdisk vd;
+      int vk = rufux_vdisk_detect(argv[2], &vd, err, sizeof err);
+      if (vk < 0) { fprintf(stderr, "write failed: %s\n", err); return 3; }
+      if (vk > 0) {
+        printf("%s image detected (%.1f GiB expanded): converting with qemu-img.\n",
+               vd.label, vd.virtual_size / 1073741824.0);
+        if (rufux_vdisk_write(argv[2], &vd, argv[3], &o, cli_progress, NULL, err, sizeof err) != 0) {
+          fprintf(stderr, "write failed: %s\n", err[0] ? err : "unknown");
+          return 3;
+        }
+        printf("%s OK: %s -> %s%s\n", o.dry_run ? "dry-run" : "write", argv[2], argv[3],
+               o.verify ? " (verified)" : "");
+        return 0;
+      }
     }
     if (rufux_vhd_adjust(argv[2], &o, cli_clog, NULL, err, sizeof err) != 0) {
       fprintf(stderr, "write failed: %s\n", err);
@@ -496,6 +534,23 @@ int main(int argc, char **argv) {
     printf("validate-efi: OK '%s' (PE subsystem %u = EFI)\n", argv[2], sub);
     return 0;
   }
+  if (argc >= 3 && !strcmp(argv[1], "check-boot")) {
+    struct stat cs;
+    if (stat(argv[2], &cs) != 0) { fprintf(stderr, "check-boot: cannot open '%s'\n", argv[2]); return 2; }
+    if (S_ISDIR(cs.st_mode)) return rufux_bootcheck_tree(argv[2], cli_clog, NULL) ? 4 : 0;
+    RufuxBootCheck bc;
+    if (rufux_bootcheck_file(argv[2], &bc) != 0) { fprintf(stderr, "check-boot: cannot read '%s'\n", argv[2]); return 2; }
+    printf("%s: %s%s%s%s%s\n", argv[2], rufux_bootcheck_state_name(bc.state),
+           bc.arch[0] ? " arch=" : "", bc.arch, bc.signer[0] ? " signer=" : "", bc.signer);
+    if (bc.detail[0]) printf("  %s\n", bc.detail);
+    return bc.state >= RUFUX_BOOT_REVOKED_DBX ? 4 : (bc.state == RUFUX_BOOT_NOTPE ? 2 : 0);
+  }
+  if (argc >= 3 && !strcmp(argv[1], "smart")) {
+    char msg[256];
+    RufuxSmartState st = rufux_smart_check(argv[2], msg, sizeof msg);
+    printf("%s\n", msg);
+    return st == RUFUX_SMART_FAILED ? 4 : 0;
+  }
   if (argc >= 2 && !strcmp(argv[1], "update-check")) {
     char latest[64] = {0}, err[256] = {0};
     if (rufux_update_check(RUFUX_VERSION, latest, sizeof latest, err, sizeof err) != 0) {
@@ -533,6 +588,7 @@ int main(int argc, char **argv) {
       else if (!strcmp(argv[i], "--full")) o.quick_format = 0;
       else if (!strcmp(argv[i], "--no-autorun")) o.extended_label = 0;
       else if (!strcmp(argv[i], "--uefi-validate")) o.uefi_validate = 1;
+      else if (!strcmp(argv[i], "--ignore-smart")) o.ignore_smart = 1;
       else if (!strcmp(argv[i], "--wue") && i + 1 < argc) o.wue = argv[++i];
       else if (!strcmp(argv[i], "--split-wim") && i + 1 < argc) o.split_wim_mb = (unsigned)atoi(argv[++i]);
       else if (!strcmp(argv[i], "--locale") && i + 1 < argc) o.locale = argv[++i];
@@ -557,16 +613,68 @@ int main(int argc, char **argv) {
   if (argc == 1 && (getenv("DISPLAY") || getenv("WAYLAND_DISPLAY")))
     return rufux_gui_run(argc, argv);
   if (argc >= 2 && !strcmp(argv[1], "download-windows")) {
-    printf("Rufux cannot download Windows ISOs for you: Microsoft serves\n"
-           "them through an authenticated web flow with no sanctioned API.\n"
-           "\n"
-           "  1. Fetch the ISO yourself:\n"
-           "     https://www.microsoft.com/software-download/windows11\n"
-           "  2. Write it as installation media:\n"
-           "     sudo rufux create Win11.iso /dev/sdX --mode windows --wue bypass,nro --real --yes\n"
-           "\n"
-           "Use --mode windows (not dd): install.wim usually exceeds 4 GiB,\n"
-           "so the image goes to NTFS with UEFI:NTFS boot files on the ESP.\n");
+    const char *ver = "11", *lang = NULL, *arch = NULL, *outdir = ".";
+    int edition = 0, list = 0, list_langs = 0, url_only = 0;
+    for (int i = 2; i < argc; i++) {
+      if (!strcmp(argv[i], "--list")) list = 1;
+      else if (!strcmp(argv[i], "--list-langs")) list_langs = 1;
+      else if (!strcmp(argv[i], "--url-only")) url_only = 1;
+      else if (!strcmp(argv[i], "--version") && i + 1 < argc) ver = argv[++i];
+      else if (!strcmp(argv[i], "--edition") && i + 1 < argc) edition = atoi(argv[++i]);
+      else if (!strcmp(argv[i], "--lang") && i + 1 < argc) lang = argv[++i];
+      else if (!strcmp(argv[i], "--arch") && i + 1 < argc) arch = argv[++i];
+      else if (!strcmp(argv[i], "--out") && i + 1 < argc) outdir = argv[++i];
+      else { fprintf(stderr, "download-windows: unexpected argument '%s'\n", argv[i]); return 2; }
+    }
+    int np;
+    const RufuxMsdlProduct *pr = rufux_msdl_products(&np);
+    if (list) {
+      for (int i = 0; i < np; i++) {
+        printf("%s  %s\n", pr[i].name, pr[i].release);
+        for (int e = 0; e < pr[i].edition_count; e++) printf("  --edition %d  %s\n", e, pr[i].editions[e]);
+      }
+      return 0;
+    }
+    int pi = !strcmp(ver, "11") ? 0 : !strcmp(ver, "10") ? 1 : -1;
+    if (pi < 0) { fprintf(stderr, "download-windows: --version must be 11 or 10\n"); return 2; }
+    char err[600] = {0};
+    RufuxMsdl *h = rufux_msdl_open(pi, edition, err, sizeof err);
+    if (!h) { fprintf(stderr, "download-windows: %s\n", err); return 3; }
+    if (list_langs) {
+      for (int i = 0; i < rufux_msdl_language_count(h); i++)
+        printf("%s|%s\n", rufux_msdl_language_name(h, i), rufux_msdl_language_display(h, i));
+      rufux_msdl_close(h);
+      return 0;
+    }
+    int li = rufux_msdl_find_language(h, lang, err, sizeof err);
+    if (li < 0) { fprintf(stderr, "download-windows: %s\n", err); rufux_msdl_close(h); return 2; }
+    RufuxMsdlLink links[4];
+    int nl = rufux_msdl_links(h, li, links, 4, err, sizeof err);
+    rufux_msdl_close(h);
+    if (nl < 0) { fprintf(stderr, "download-windows: %s\n", err); return 3; }
+    int pick = -1;
+    if (arch) {
+      for (int i = 0; i < nl; i++) if (!strcasecmp(links[i].arch, arch)) pick = i;
+      if (pick < 0) {
+        fprintf(stderr, "download-windows: no %s ISO for this edition. Available:", arch);
+        for (int i = 0; i < nl; i++) fprintf(stderr, " %s", links[i].arch);
+        fprintf(stderr, "\n");
+        return 2;
+      }
+    } else {
+      for (int i = 0; i < nl; i++) if (!strcmp(links[i].arch, "x64")) pick = i;
+      if (pick < 0) pick = 0;
+    }
+    if (url_only) { printf("%s\n", links[pick].url); return 0; }
+    printf("Downloading %s (%s)...\n", pr[pi].editions[edition], links[pick].arch);
+    char iso[4200];
+    if (rufux_msdl_fetch(links[pick].url, outdir, dl_progress, NULL, iso, sizeof iso, err, sizeof err) != 0) {
+      fprintf(stderr, "download-windows: %s\n", err);
+      return 3;
+    }
+    char hex[65];
+    if (rufux_msdl_sha256(iso, hex) == 0) printf("SHA-256: %s\n", hex);
+    printf("ISO: %s\n", iso);
     return 0;
   }
   usage(argv[0]);

@@ -1,0 +1,24 @@
+#!/bin/bash
+# Test double for smartctl -j. RUFUX_SHIM_SMART = pass | warn | fail | none | sat-only
+# (sat-only answers only when called with "-d sat", like a USB-SATA bridge).
+mode=${RUFUX_SHIM_SMART:-none}
+sat=0; for a in "$@"; do [ "$a" = sat ] && sat=1; done
+hdr='{ "json_format_version": [1, 0], "smartctl": { "version": [7, 4] },'
+attrs() { # reallocated pending uncorrectable
+cat <<A
+  "ata_smart_attributes": { "revision": 16, "table": [
+    { "id": 1, "name": "Raw_Read_Error_Rate", "value": 100, "worst": 100, "thresh": 6, "raw": { "value": 0, "string": "0" } },
+    { "id": 5, "name": "Reallocated_Sector_Ct", "value": 100, "worst": 100, "thresh": 10, "raw": { "value": $1, "string": "$1" } },
+    { "id": 197, "name": "Current_Pending_Sector", "value": 100, "worst": 100, "thresh": 0, "raw": { "value": $2, "string": "$2" } },
+    { "id": 198, "name": "Offline_Uncorrectable", "value": 100, "worst": 100, "thresh": 0, "raw": { "value": $3, "string": "$3" } }
+  ] }
+A
+}
+case $mode in
+  pass) echo "$hdr"; echo '"smart_status": { "passed": true },'; attrs 0 0 0; echo '}'; exit 0 ;;
+  warn) echo "$hdr"; echo '"smart_status": { "passed": true },'; attrs 12 3 0; echo '}'; exit 4 ;;
+  fail) echo "$hdr"; echo '"smart_status": { "passed": false },'; attrs 0 0 0; echo '}'; exit 8 ;;
+  sat-only) if [ $sat = 1 ]; then echo "$hdr"; echo '"smart_status": { "passed": true },'; attrs 0 0 0; echo '}'; exit 0; fi ;;
+esac
+echo '{ "smartctl": { "messages": [ { "string": "Unknown USB bridge", "severity": "error" } ], "exit_status": 1 } }'
+exit 1

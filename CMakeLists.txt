@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(Rufux VERSION 1.9.1 LANGUAGES C CXX)
+project(Rufux VERSION 2.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -47,6 +47,12 @@ add_executable(rufux
   src/linux/priv.c
   src/linux/secureboot.c
   src/linux/update.c
+  src/linux/smart.c
+  src/linux/mjson.c
+  src/linux/vdisk.c
+  src/linux/bootcheck.c
+  src/linux/biosboot.c
+  src/linux/msdl.c
 )
 
 target_include_directories(rufux PRIVATE src/linux src)
@@ -97,6 +103,8 @@ install(FILES res/linux/io.github.hultwl.rufux.policy DESTINATION share/polkit-1
 # Boot payloads (FreeDOS set, UEFI:NTFS image) resolved at runtime.
 install(DIRECTORY res/freedos DESTINATION share/rufux)
 install(FILES res/uefi/uefi-ntfs.img DESTINATION share/rufux)
+# Secure Boot revocation lists (UEFI DBX), read by the bootloader check
+install(DIRECTORY res/dbx DESTINATION share/rufux FILES_MATCHING PATTERN "*.efiauth2")
 # App icon
 foreach(SZ 512 256 128 64 48 32 16)
   install(FILES res/icons/rufux-${SZ}.png
@@ -121,4 +129,16 @@ add_test(NAME fat_split COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_fat_split.sh
 set_tests_properties(fat_split PROPERTIES SKIP_RETURN_CODE 77)
 add_test(NAME relocatable COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_relocatable.sh $<TARGET_FILE:rufux>)
 add_test(NAME cli COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_cli.sh $<TARGET_FILE:rufux>)
+add_test(NAME fs_types COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_fs_types.sh $<TARGET_FILE:rufux>)
+set_tests_properties(fs_types PROPERTIES SKIP_RETURN_CODE 77)
+add_test(NAME smart COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_smart.sh $<TARGET_FILE:rufux>)
+set_tests_properties(smart PROPERTIES SKIP_RETURN_CODE 77)
+add_test(NAME vdisk COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_vdisk.sh $<TARGET_FILE:rufux>)
+set_tests_properties(vdisk PROPERTIES SKIP_RETURN_CODE 77)
+add_test(NAME bootcheck COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_bootcheck.sh $<TARGET_FILE:rufux>)
+set_tests_properties(bootcheck PROPERTIES SKIP_RETURN_CODE 77)
+add_test(NAME msdl COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_msdl.sh $<TARGET_FILE:rufux>)
+set_tests_properties(msdl PROPERTIES SKIP_RETURN_CODE 77)
+add_test(NAME bios_boot COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_bios_boot.sh $<TARGET_FILE:rufux>)
+set_tests_properties(bios_boot PROPERTIES SKIP_RETURN_CODE 77)
 set_tests_properties(cli PROPERTIES SKIP_RETURN_CODE 77)
