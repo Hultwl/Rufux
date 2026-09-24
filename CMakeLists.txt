@@ -137,6 +137,8 @@ add_test(NAME vdisk COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_vdisk.sh $<TARGE
 set_tests_properties(vdisk PROPERTIES SKIP_RETURN_CODE 77)
 add_test(NAME bootcheck COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_bootcheck.sh $<TARGET_FILE:rufux>)
 set_tests_properties(bootcheck PROPERTIES SKIP_RETURN_CODE 77)
+add_test(NAME argv0 COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_argv0.sh $<TARGET_FILE:rufux>)
+set_tests_properties(argv0 PROPERTIES SKIP_RETURN_CODE 77)
 add_test(NAME msdl COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_msdl.sh $<TARGET_FILE:rufux>)
 set_tests_properties(msdl PROPERTIES SKIP_RETURN_CODE 77)
 add_test(NAME bios_boot COMMAND bash ${CMAKE_SOURCE_DIR}/tests/test_bios_boot.sh $<TARGET_FILE:rufux>)

@@ -8,6 +8,10 @@
 // mkfs.* in /usr/sbin, Arch merges them into /usr/bin).
 int rufux_run(const char *const argv[], int dry_run);
 int rufux_have(const char *name); // 1 if executable found via PATH
+// Like execvp, but a tool found through PATH is started with its full path as argv[0].
+// Some tools (7-Zip) look for their plugins next to argv[0], so a bare "7z" would search
+// the current directory instead of the one the binary sits in. Returns only on failure.
+int rufux_execvp(const char *file, const char *const argv[]);
 // Directory of the running executable ("" on failure), for exe-relative
 // resource lookup inside relocatable bundles (AppImage: <exedir>/../share).
 const char *rufux_exe_dir(void);

@@ -26,6 +26,33 @@ int rufux_have(const char *name) {
   return found;
 }
 
+int rufux_execvp(const char *file, const char *const argv[]) {
+  if (!file || !file[0]) { errno = ENOENT; return -1; }
+  if (strchr(file, '/')) { execv(file, (char *const *)argv); return -1; }
+  const char *path = getenv("PATH");
+  if (!path || !path[0]) path = "/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin";
+  char *copy = strdup(path);
+  if (!copy) { errno = ENOMEM; return -1; }
+  int n = 0;
+  while (argv[n]) n++;
+  const char **av2 = malloc((size_t)(n + 1) * sizeof *av2);
+  if (!av2) { free(copy); errno = ENOMEM; return -1; }
+  for (int i = 0; i <= n; i++) av2[i] = argv[i];
+  int err = ENOENT;
+  for (char *save = NULL, *dir = strtok_r(copy, ":", &save); dir; dir = strtok_r(NULL, ":", &save)) {
+    char full[1024];
+    snprintf(full, sizeof full, "%s/%s", dir[0] ? dir : ".", file);
+    if (access(full, X_OK) != 0) continue;
+    av2[0] = full;
+    execv(full, (char *const *)av2);
+    err = errno;
+  }
+  free(av2);
+  free(copy);
+  errno = err;
+  return -1;
+}
+
 // Directory containing the running executable, via /proc/self/exe.
 // Lets relocatable bundles (AppImage) find data next to the binary:
 // <exedir>/../share/... mirrors a /usr install prefix.
@@ -77,7 +104,7 @@ int rufux_run(const char *const argv[], int dry_run) {
   pid_t p = fork();
   if (p < 0) return -1;
   if (p == 0) {
-    execvp(argv[0], (char *const *)argv);
+    rufux_execvp(argv[0], (const char *const *)argv);
     _exit(127);
   }
   int st = 0;
@@ -97,7 +124,7 @@ int rufux_capture(const char *const av[], char *out, unsigned long cap) {
     dup2(fd[1], STDERR_FILENO);
     close(fd[0]);
     close(fd[1]);
-    execvp(av[0], (char *const *)av);
+    rufux_execvp(av[0], (const char *const *)av);
     _exit(127);
   }
   close(fd[1]);

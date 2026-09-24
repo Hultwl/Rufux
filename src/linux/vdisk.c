@@ -203,7 +203,7 @@ static int run_progress(const char *const av[], RufuxWriteProgress cb, void *use
     dup2(fd[1], STDOUT_FILENO);
     dup2(fd[1], STDERR_FILENO);
     close(fd[0]); close(fd[1]);
-    execvp(av[0], (char *const *)av);
+    rufux_execvp(av[0], (const char *const *)av);
     _exit(127);
   }
   close(fd[1]);

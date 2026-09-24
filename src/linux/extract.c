@@ -44,7 +44,7 @@ static int extract_poll(const char *const av[], const char *dest_dir,
   pid_t pid = fork();
   if (pid < 0) { snprintf(err, cap, "fork failed"); return -1; }
   if (pid == 0) {
-    execvp(av[0], (char *const *)av);
+    rufux_execvp(av[0], (const char *const *)av);
     _exit(127);
   }
   int rc = 0;

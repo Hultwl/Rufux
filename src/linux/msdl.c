@@ -391,7 +391,7 @@ int rufux_msdl_fetch(const char *url, const char *dir, RufuxMsdlProgress cb, voi
     int nul = open("/dev/null", O_WRONLY);
     if (nul >= 0) dup2(nul, STDOUT_FILENO);
     close(fd[0]); close(fd[1]);
-    execvp(av[0], (char *const *)av);
+    rufux_execvp(av[0], (const char *const *)av);
     _exit(127);
   }
   close(fd[1]);

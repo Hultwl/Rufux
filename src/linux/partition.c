@@ -214,7 +214,7 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
   else if (p == 0) {
     FILE *f = freopen(tmpl, "r", stdin);
     (void)f;
-    execvp(argv[0], (char *const *)argv);
+    rufux_execvp(argv[0], (const char *const *)argv);
     _exit(127);
   } else {
     int st = 0;
