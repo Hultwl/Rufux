@@ -88,6 +88,10 @@ jobs:
           # 7z is a wrapper script on Debian/Ubuntu (and Arch): deploy
           # the real backend behind it.
           deploy_tool 7z 7zz 7za 7zr /usr/lib/7zip/7z
+          # Ubuntu's 7z is a thin binary that loads its archive formats from 7z.so
+          # next to it. Without the plugin `7z i` still runs but every archive fails
+          # with "Can't open as archive", and this copy shadows the system's 7z.
+          [ -f /usr/lib/7zip/7z.so ] && cp /usr/lib/7zip/7z.so AppDir/usr/bin/7z.so
           # 2.0 additions: drive health (SMART), VHDX/VMDK/QCOW2/VDI expansion, and the
           # GRUB tools that give Windows sticks legacy BIOS boot.
           for t in smartctl qemu-img grub-mkimage; do
@@ -154,6 +158,9 @@ jobs:
           # Presence is not enough (a wrapper script passed this once):
           # execute the key bundled helpers.
           AppDir/usr/bin/7z i >/dev/null || { echo "bundled 7z broken"; exit 1; }
+          # ...and it has to really open an ISO (UDF/ISO9660 extraction needs it).
+          mkdir -p /tmp/7ztest && echo hello > /tmp/7ztest/f.txt && genisoimage -quiet -o /tmp/7ztest.iso /tmp/7ztest
+          AppDir/usr/bin/7z l /tmp/7ztest.iso | grep -q "f.txt" || { echo "bundled 7z cannot open an ISO"; exit 1; }
           for v in "bsdtar --version" "sfdisk --version" "curl --version" "wimlib-imagex --version" "smartctl --version" "qemu-img --version" "grub-mkimage --version"; do
             # shellcheck disable=SC2086
             AppDir/usr/bin/$v >/dev/null || { echo "bundled $v broken"; exit 1; }
