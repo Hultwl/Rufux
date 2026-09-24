@@ -29,9 +29,9 @@
 
 // Largest label each file system accepts.
 static int label_limit(const char *fs) {
-  if (!strcmp(fs, "vfat")) return 11;
+  if (!strcmp(fs, "vfat") || !strcmp(fs, "fat16")) return 11;
   if (!strcmp(fs, "exfat")) return 15;
-  if (!strcmp(fs, "ext4")) return 16;
+  if (!strncmp(fs, "ext", 3)) return 16;
   if (!strcmp(fs, "udf")) return 30;
   return 32;
 }
@@ -42,7 +42,7 @@ static void sanitize_label(const char *in, const char *fs, char *out, size_t cap
   for (const unsigned char *p = (const unsigned char *)in; *p && (int)n < limit && n + 1 < cap; p++) {
     unsigned char c = *p;
     if (c == ' ') c = '_';
-    if (isalnum(c)) out[n++] = (!strcmp(fs, "vfat")) ? (unsigned char)toupper(c) : c;
+    if (isalnum(c)) out[n++] = (!strcmp(fs, "vfat") || !strcmp(fs, "fat16")) ? (unsigned char)toupper(c) : c;
     else if (c == '_' || c == '-') out[n++] = c;
   }
   out[n] = 0;
@@ -55,7 +55,7 @@ typedef struct {
   GtkWidget *win;
   GtkWidget *dev_combo, *boot_combo, *image_combo, *scheme_combo, *target_combo;
   GtkWidget *fs_combo, *cluster_combo, *passes_combo;
-  GtkWidget *select_btn, *hash_btn, *start_btn, *close_btn;
+  GtkWidget *select_btn, *dl_btn, *hash_btn, *start_btn, *close_btn;
   GtkWidget *about_btn, *log_btn;
   GtkWidget *persist_scale, *persist_value, *dev_count, *image_info;
   GtkWidget *label_entry;
@@ -75,6 +75,7 @@ typedef struct {
   char dev_signature[8192];
   GSubprocess *worker;
   char last_error[1024];
+  char dl_iso[4096];  // set when a Windows ISO download finishes: loaded as the image
   guint poll_id;
 } App;
 
@@ -85,6 +86,9 @@ static const char *fs_key(App *a) {
   if (!strcmp(t, "exFAT")) return "exfat";
   if (!strcmp(t, "UDF")) return "udf";
   if (!strcmp(t, "ext4")) return "ext4";
+  if (!strcmp(t, "ext3")) return "ext3";
+  if (!strcmp(t, "ext2")) return "ext2";
+  if (!strcmp(t, "FAT16")) return "fat16";
   return "vfat";
 }
 
@@ -220,12 +224,13 @@ static void sync_enabled(App *a) {
   gtk_widget_set_sensitive(a->dev_combo, !run);
   gtk_widget_set_sensitive(a->boot_combo, !run);
   gtk_widget_set_sensitive(a->select_btn, !run);
+  gtk_widget_set_sensitive(a->dl_btn, !run);
   gtk_widget_set_sensitive(a->scheme_combo, !run);
   gtk_widget_set_sensitive(a->target_combo, !run);
   gtk_widget_set_sensitive(a->fs_combo, !run);
   gtk_widget_set_sensitive(a->label_entry, !run);
   const char *fs = fs_key(a);
-  gtk_widget_set_sensitive(a->cluster_combo, !run && (!strcmp(fs, "vfat") || !strcmp(fs, "ntfs")));
+  gtk_widget_set_sensitive(a->cluster_combo, !run && (!strcmp(fs, "vfat") || !strcmp(fs, "fat16") || !strcmp(fs, "ntfs")));
   gtk_widget_set_sensitive(a->hash_btn, !run && have);
   gtk_widget_set_sensitive(a->close_btn, !run);
   gtk_button_set_label(GTK_BUTTON(a->start_btn), run ? "CANCEL" : "START");
@@ -236,7 +241,7 @@ static void sync_enabled(App *a) {
 static void set_fs_choices(App *a, gboolean windows, const char *keep) {
   GtkStringList *model = windows
       ? gtk_string_list_new((const char *[]){"FAT32", "NTFS", NULL})
-      : gtk_string_list_new((const char *[]){"FAT32", "NTFS", "exFAT", "UDF", "ext4", NULL});
+      : gtk_string_list_new((const char *[]){"FAT32", "FAT16", "NTFS", "exFAT", "UDF", "ext2", "ext3", "ext4", NULL});
   gtk_drop_down_set_model(GTK_DROP_DOWN(a->fs_combo), G_LIST_MODEL(model));
   g_object_unref(model);
   guint n = g_list_model_get_n_items(G_LIST_MODEL(model));
@@ -770,6 +775,7 @@ static void on_worker_line(GObject *stream, GAsyncResult *res, gpointer data) {
       if (!*rest) continue;
       part = rest;
     }
+    if (!strncmp(part, "ISO: ", 5)) snprintf(a->dl_iso, sizeof a->dl_iso, "%s", part + 5);
     log_line(a, part);
     if (strcmp(part, "Done.") != 0) snprintf(a->last_error, sizeof a->last_error, "%s", part);
   }
@@ -790,8 +796,15 @@ static void on_worker_exit(GObject *proc, GAsyncResult *res, gpointer data) {
     gtk_progress_bar_set_text(GTK_PROGRESS_BAR(a->bar), "READY");
     log_line(a, "Done.");
     if (err) g_error_free(err);
+    if (a->dl_iso[0]) {  // a Windows ISO was just downloaded: make it the selected image
+      char *iso = g_strdup(a->dl_iso);
+      a->dl_iso[0] = 0;
+      load_image(a, iso);
+      g_free(iso);
+    }
     return;
   }
+  a->dl_iso[0] = 0;
   gtk_progress_bar_set_text(GTK_PROGRESS_BAR(a->bar), "READY");
   char why[1200];
   if (code == 126 || code == 127) snprintf(why, sizeof why, "Authorization was cancelled or pkexec is unavailable.");
@@ -941,6 +954,268 @@ static void on_start_clicked(GtkButton *btn, gpointer data) {
   sync_enabled(a);
 }
 
+// ===== Windows ISO download dialog ==========================================
+// Runs `rufux download-windows` as an ordinary (non-root) child and reuses the main
+// window's progress bar and log. The finished ISO becomes the selected image.
+
+typedef struct {
+  App *a;
+  GtkWidget *win, *ver, *edition, *lang, *arch, *folder_btn, *status, *go;
+  char folder[2048];
+  char (*langs)[128];   // "Name" for each language row
+  int nlangs;
+  GSubprocess *lister;
+  int refs;             // the window plus every language lookup still running
+  gboolean dead;        // window destroyed: late replies must not touch widgets
+} DlDlg;
+
+static void dl_unref(DlDlg *d) {
+  if (--d->refs > 0) return;
+  free(d->langs);
+  g_free(d);
+}
+
+static const char *dl_version(DlDlg *d) { return gtk_drop_down_get_selected(GTK_DROP_DOWN(d->ver)) == 0 ? "11" : "10"; }
+
+static void dl_set_arches(DlDlg *d) {
+  GtkStringList *m = gtk_drop_down_get_selected(GTK_DROP_DOWN(d->ver)) == 0
+      ? gtk_string_list_new((const char *[]){"x64", "ARM64", NULL})
+      : gtk_string_list_new((const char *[]){"x64", "x86", NULL});
+  gtk_drop_down_set_model(GTK_DROP_DOWN(d->arch), G_LIST_MODEL(m));
+  g_object_unref(m);
+}
+
+static void dl_set_editions(DlDlg *d) {
+  GtkStringList *m = gtk_drop_down_get_selected(GTK_DROP_DOWN(d->ver)) == 0
+      ? gtk_string_list_new((const char *[]){"Home / Pro / Education", "Home China", "Pro China", NULL})
+      : gtk_string_list_new((const char *[]){"Home / Pro / Education", "Home China", NULL});
+  gtk_drop_down_set_model(GTK_DROP_DOWN(d->edition), G_LIST_MODEL(m));
+  g_object_unref(m);
+}
+
+static void dl_load_langs(DlDlg *d);
+
+static void dl_langs_done(GObject *proc, GAsyncResult *res, gpointer data) {
+  DlDlg *d = data;
+  char *out = NULL, *errs = NULL;
+  GError *err = NULL;
+  gboolean ok = g_subprocess_communicate_utf8_finish(G_SUBPROCESS(proc), res, &out, &errs, &err);
+  if (err) g_error_free(err);
+  int status = g_subprocess_get_exit_status(G_SUBPROCESS(proc));
+  gboolean current = G_SUBPROCESS(proc) == d->lister;
+  if (current) d->lister = NULL;
+  g_object_unref(proc);
+  if (d->dead || !current) {  // window gone, or a newer lookup replaced this one
+    g_free(out); g_free(errs);
+    dl_unref(d);
+    return;
+  }
+  free(d->langs);
+  d->langs = NULL;
+  d->nlangs = 0;
+  gboolean good = ok && out && *out && status == 0;
+  if (good) {
+    gchar **lines = g_strsplit(out, "\n", -1);
+    int n = 0;
+    for (gchar **l = lines; *l; l++) if (strchr(*l, '|')) n++;
+    d->langs = calloc((size_t)n + 1, sizeof *d->langs);
+    GtkStringList *m = gtk_string_list_new(NULL);
+    guint pick = 0;
+    for (gchar **l = lines; *l; l++) {
+      gchar *bar = strchr(*l, '|');
+      if (!bar) continue;
+      *bar = 0;
+      snprintf(d->langs[d->nlangs], sizeof d->langs[0], "%s", *l);
+      if (!strcmp(*l, "English")) pick = (guint)d->nlangs;
+      gtk_string_list_append(m, bar + 1);
+      d->nlangs++;
+    }
+    g_strfreev(lines);
+    gtk_drop_down_set_model(GTK_DROP_DOWN(d->lang), G_LIST_MODEL(m));
+    g_object_unref(m);
+    gtk_drop_down_set_selected(GTK_DROP_DOWN(d->lang), pick);
+    gtk_label_set_text(GTK_LABEL(d->status), "Choose a language, then Download. The ISO comes straight from Microsoft.");
+  } else {
+    char *msg = g_strdup_printf("Could not get the language list: %s",
+                                errs && *errs ? g_strstrip(errs) : "no answer from Microsoft's service");
+    gtk_label_set_text(GTK_LABEL(d->status), msg);
+    g_free(msg);
+    GtkStringList *m = gtk_string_list_new((const char *[]){"(unavailable)", NULL});
+    gtk_drop_down_set_model(GTK_DROP_DOWN(d->lang), G_LIST_MODEL(m));
+    g_object_unref(m);
+  }
+  gtk_widget_set_sensitive(d->go, good);
+  g_free(out);
+  g_free(errs);
+  dl_unref(d);
+}
+
+static void dl_load_langs(DlDlg *d) {
+  char *self = g_file_read_link("/proc/self/exe", NULL);
+  const char *appimage = g_getenv("APPIMAGE");
+  char ed[8];
+  snprintf(ed, sizeof ed, "%u", gtk_drop_down_get_selected(GTK_DROP_DOWN(d->edition)));
+  const char *argv[] = {(appimage && *appimage) ? appimage : (self ? self : "rufux"), "download-windows",
+                        "--list-langs", "--version", dl_version(d), "--edition", ed, NULL};
+  GError *err = NULL;
+  GSubprocess *p = g_subprocess_newv(argv, G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_PIPE, &err);
+  g_free(self);
+  if (!p) {
+    gtk_label_set_text(GTK_LABEL(d->status), err ? err->message : "Could not start the download helper.");
+    if (err) g_error_free(err);
+    return;
+  }
+  d->lister = p;  // an older lookup, if any, finds itself superseded and discards its reply
+  d->refs++;
+  gtk_widget_set_sensitive(d->go, FALSE);
+  GtkStringList *m = gtk_string_list_new((const char *[]){"Loading...", NULL});
+  gtk_drop_down_set_model(GTK_DROP_DOWN(d->lang), G_LIST_MODEL(m));
+  g_object_unref(m);
+  gtk_label_set_text(GTK_LABEL(d->status), "Asking Microsoft which languages are available...");
+  g_subprocess_communicate_utf8_async(p, NULL, NULL, dl_langs_done, d);
+}
+
+static void dl_version_changed(GObject *o, GParamSpec *ps, gpointer data) {
+  (void)o; (void)ps;
+  DlDlg *d = data;
+  dl_set_editions(d);
+  dl_set_arches(d);
+  dl_load_langs(d);
+}
+
+static void dl_edition_changed(GObject *o, GParamSpec *ps, gpointer data) {
+  (void)o; (void)ps;
+  dl_load_langs(data);
+}
+
+static void dl_folder_chosen(GObject *chooser, GAsyncResult *res, gpointer data) {
+  DlDlg *d = data;
+  GFile *f = gtk_file_dialog_select_folder_finish(GTK_FILE_DIALOG(chooser), res, NULL);
+  if (!f) return;
+  char *p = g_file_get_path(f);
+  if (p) {
+    snprintf(d->folder, sizeof d->folder, "%s", p);
+    gtk_button_set_label(GTK_BUTTON(d->folder_btn), d->folder);
+  }
+  g_free(p);
+  g_object_unref(f);
+}
+
+static void dl_pick_folder(GtkButton *b, gpointer data) {
+  (void)b;
+  DlDlg *d = data;
+  GtkFileDialog *dlg = gtk_file_dialog_new();
+  gtk_file_dialog_set_title(dlg, "Save the ISO in");
+  gtk_file_dialog_select_folder(dlg, GTK_WINDOW(d->win), NULL, dl_folder_chosen, d);
+  g_object_unref(dlg);
+}
+
+static void dl_destroyed(GtkWidget *w, gpointer data) {
+  (void)w;
+  DlDlg *d = data;
+  d->dead = TRUE;
+  if (d->lister) g_subprocess_force_exit(d->lister);
+  dl_unref(d);
+}
+
+static void dl_go(GtkButton *b, gpointer data) {
+  (void)b;
+  DlDlg *d = data;
+  App *a = d->a;
+  if (busy(a) || d->nlangs <= 0) return;
+  guint li = gtk_drop_down_get_selected(GTK_DROP_DOWN(d->lang));
+  if ((int)li >= d->nlangs) return;
+  char *self = g_file_read_link("/proc/self/exe", NULL);
+  const char *appimage = g_getenv("APPIMAGE");
+  char ed[8];
+  snprintf(ed, sizeof ed, "%u", gtk_drop_down_get_selected(GTK_DROP_DOWN(d->edition)));
+  GtkStringObject *ao = GTK_STRING_OBJECT(gtk_drop_down_get_selected_item(GTK_DROP_DOWN(d->arch)));
+  const char *argv[] = {(appimage && *appimage) ? appimage : (self ? self : "rufux"), "download-windows",
+                        "--version", dl_version(d), "--edition", ed, "--lang", d->langs[li],
+                        "--arch", gtk_string_object_get_string(ao), "--out", d->folder, NULL};
+  GError *err = NULL;
+  GSubprocess *proc = g_subprocess_newv(argv, G_SUBPROCESS_FLAGS_STDOUT_PIPE | G_SUBPROCESS_FLAGS_STDERR_MERGE, &err);
+  g_free(self);
+  if (!proc) {
+    log_line(a, err ? err->message : "Could not start the download.");
+    if (err) g_error_free(err);
+    return;
+  }
+  a->last_error[0] = 0;
+  a->dl_iso[0] = 0;
+  gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(a->bar), 0);
+  gtk_progress_bar_set_text(GTK_PROGRESS_BAR(a->bar), "0%");
+  log_line(a, "Downloading the Windows ISO from Microsoft...");
+  a->worker = proc;
+  GDataInputStream *dis = g_data_input_stream_new(g_subprocess_get_stdout_pipe(proc));
+  read_next_line(a, dis);
+  g_subprocess_wait_check_async(proc, NULL, on_worker_exit, a);
+  sync_enabled(a);
+  gtk_window_close(GTK_WINDOW(d->win));
+}
+
+static void dl_close(GtkButton *b, gpointer data) { (void)b; gtk_window_close(GTK_WINDOW(((DlDlg *)data)->win)); }
+
+static void on_download_clicked(GtkButton *btn, gpointer data) {
+  (void)btn;
+  App *a = data;
+  if (busy(a)) return;
+  DlDlg *d = g_new0(DlDlg, 1);
+  d->refs = 1;
+  d->a = a;
+  d->win = gtk_window_new();
+  gtk_window_set_title(GTK_WINDOW(d->win), "Download a Windows ISO");
+  gtk_window_set_transient_for(GTK_WINDOW(d->win), GTK_WINDOW(a->win));
+  gtk_window_set_modal(GTK_WINDOW(d->win), TRUE);
+  gtk_window_set_default_size(GTK_WINDOW(d->win), 460, -1);
+  g_signal_connect(d->win, "destroy", G_CALLBACK(dl_destroyed), d);
+
+  GtkWidget *grid = gtk_grid_new();
+  gtk_grid_set_row_spacing(GTK_GRID(grid), 8);
+  gtk_grid_set_column_spacing(GTK_GRID(grid), 10);
+  gtk_widget_set_margin_start(grid, 14); gtk_widget_set_margin_end(grid, 14);
+  gtk_widget_set_margin_top(grid, 14); gtk_widget_set_margin_bottom(grid, 14);
+  d->ver = gtk_drop_down_new_from_strings((const char *[]){"Windows 11", "Windows 10", NULL});
+  d->edition = gtk_drop_down_new(NULL, NULL);
+  d->lang = gtk_drop_down_new(NULL, NULL);
+  d->arch = gtk_drop_down_new(NULL, NULL);
+  const char *dir = g_get_user_special_dir(G_USER_DIRECTORY_DOWNLOAD);
+  snprintf(d->folder, sizeof d->folder, "%s", dir ? dir : g_get_home_dir());
+  d->folder_btn = gtk_button_new_with_label(d->folder);
+  d->status = gtk_label_new("");
+  gtk_label_set_wrap(GTK_LABEL(d->status), TRUE);
+  gtk_label_set_xalign(GTK_LABEL(d->status), 0);
+  gtk_widget_set_hexpand(d->ver, TRUE);
+  const char *names[] = {"Version", "Edition", "Language", "Architecture", "Save to"};
+  GtkWidget *rows[] = {d->ver, d->edition, d->lang, d->arch, d->folder_btn};
+  for (int i = 0; i < 5; i++) {
+    GtkWidget *l = gtk_label_new(names[i]);
+    gtk_label_set_xalign(GTK_LABEL(l), 0);
+    gtk_grid_attach(GTK_GRID(grid), l, 0, i, 1, 1);
+    gtk_widget_set_hexpand(rows[i], TRUE);
+    gtk_grid_attach(GTK_GRID(grid), rows[i], 1, i, 1, 1);
+  }
+  gtk_grid_attach(GTK_GRID(grid), d->status, 0, 5, 2, 1);
+  d->go = gtk_button_new_with_label("Download");
+  GtkWidget *cancel = gtk_button_new_with_label("Close");
+  GtkWidget *btns = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_widget_set_halign(btns, GTK_ALIGN_END);
+  gtk_box_append(GTK_BOX(btns), cancel);
+  gtk_box_append(GTK_BOX(btns), d->go);
+  gtk_grid_attach(GTK_GRID(grid), btns, 0, 6, 2, 1);
+  gtk_window_set_child(GTK_WINDOW(d->win), grid);
+
+  dl_set_editions(d);
+  dl_set_arches(d);
+  g_signal_connect(d->ver, "notify::selected", G_CALLBACK(dl_version_changed), d);
+  g_signal_connect(d->edition, "notify::selected", G_CALLBACK(dl_edition_changed), d);
+  g_signal_connect(d->folder_btn, "clicked", G_CALLBACK(dl_pick_folder), d);
+  g_signal_connect(d->go, "clicked", G_CALLBACK(dl_go), d);
+  g_signal_connect(cancel, "clicked", G_CALLBACK(dl_close), d);
+  gtk_window_present(GTK_WINDOW(d->win));
+  dl_load_langs(d);
+}
+
 // ===== window construction ==================================================
 
 static void on_close_clicked(GtkButton *b, gpointer data) { (void)b; App *a = data; gtk_window_close(GTK_WINDOW(a->win)); }
@@ -1026,6 +1301,8 @@ static void build_ui(App *a, GtkApplication *gapp) {
   a->boot_combo = boot_items_holder;
   gtk_drop_down_set_selected(GTK_DROP_DOWN(a->boot_combo), 2);
   a->select_btn = gtk_button_new_with_label("SELECT");
+  a->dl_btn = gtk_button_new_with_label("DOWNLOAD");
+  gtk_widget_set_tooltip_text(a->dl_btn, "Download a Windows 10 or 11 ISO from Microsoft");
   a->hash_btn = gtk_button_new_with_label("\xE2\x9C\x93");
   gtk_widget_set_tooltip_text(a->hash_btn, "Compute the checksums of the image");
   GtkWidget *boot_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
@@ -1033,6 +1310,7 @@ static void build_ui(App *a, GtkApplication *gapp) {
   gtk_box_append(GTK_BOX(boot_row), a->boot_combo);
   gtk_box_append(GTK_BOX(boot_row), a->hash_btn);
   gtk_box_append(GTK_BOX(boot_row), a->select_btn);
+  gtk_box_append(GTK_BOX(boot_row), a->dl_btn);
   form_row(drive_grid, 1, "Boot selection", boot_row);
 
   a->image_combo = string_dropdown((const char *[]){"Standard Windows installation", NULL});
@@ -1083,7 +1361,7 @@ static void build_ui(App *a, GtkApplication *gapp) {
   a->label_entry = gtk_entry_new();
   gtk_editable_set_text(GTK_EDITABLE(a->label_entry), "NO_LABEL");
   form_row(format_grid, 0, "Volume label", a->label_entry);
-  a->fs_combo = string_dropdown((const char *[]){"FAT32", "NTFS", "exFAT", "UDF", "ext4", NULL});
+  a->fs_combo = string_dropdown((const char *[]){"FAT32", "FAT16", "NTFS", "exFAT", "UDF", "ext2", "ext3", "ext4", NULL});
   form_row(format_grid, 1, "File system", a->fs_combo);
   a->cluster_combo = string_dropdown((const char *[]){"512 bytes", "1024 bytes", "2048 bytes",
       "4096 bytes (Default)", "8192 bytes", "16 kilobytes", "32 kilobytes", "64 kilobytes", NULL});
@@ -1149,6 +1427,7 @@ static void build_ui(App *a, GtkApplication *gapp) {
 
   // ---- wiring ----
   g_signal_connect(a->select_btn, "clicked", G_CALLBACK(on_select_clicked), a);
+  g_signal_connect(a->dl_btn, "clicked", G_CALLBACK(on_download_clicked), a);
   g_signal_connect(a->hash_btn, "clicked", G_CALLBACK(on_hash_clicked), a);
   g_signal_connect(a->start_btn, "clicked", G_CALLBACK(on_start_clicked), a);
   g_signal_connect(a->close_btn, "clicked", G_CALLBACK(on_close_clicked), a);
