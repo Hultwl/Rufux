@@ -62,7 +62,7 @@ export APPIMAGE_EXTRACT_AND_RUN=1
 ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
   --appdir AppDir \
   -e AppDir/usr/bin/rufux \
-  -e AppDir/usr/bin/rufux-gui \
+  -e AppDir/usr/bin/rufux-gui.bin \
   $(tr '\n' ' ' < "$ROOT/.rufux-tools") \
   --exclude-library libwebkit2gtk-4.1.so.0 \
   --exclude-library libjavascriptcoregtk-4.1.so.0 \
@@ -80,8 +80,20 @@ export APPIMAGE_EXTRACT_AND_RUN=1
   --exclude-library libsharpyuv.so.0 \
   --exclude-library libyuv.so \
   --exclude-library libgstreamer-1.0.so.0 \
+  --exclude-library libgstallocators-1.0.so.0 \
+  --exclude-library libgstapp-1.0.so.0 \
+  --exclude-library libgstaudio-1.0.so.0 \
+  --exclude-library libgstbase-1.0.so.0 \
+  --exclude-library libgstfft-1.0.so.0 \
+  --exclude-library libgstgl-1.0.so.0 \
+  --exclude-library libgstpbutils-1.0.so.0 \
+  --exclude-library libgsttag-1.0.so.0 \
+  --exclude-library libgstvideo-1.0.so.0 \
   --exclude-library libhyphen.so.0 \
   --exclude-library libxslt.so.1 \
+  --exclude-library libenchant-2.so.2 \
+  --exclude-library libmanette-0.2.so.0 \
+  --exclude-library libsecret-1.so.0 \
   -d AppDir/usr/share/applications/io.github.hultwl.rufux.desktop \
   -i AppDir/usr/share/icons/hicolor/128x128/apps/io.github.hultwl.rufux.png \
   --output appimage

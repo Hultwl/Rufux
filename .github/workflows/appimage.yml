@@ -137,13 +137,38 @@ jobs:
           ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
             --appdir AppDir \
             -e AppDir/usr/bin/rufux \
-            -e AppDir/usr/bin/rufux-gui \
+            -e AppDir/usr/bin/rufux-gui.bin \
             $(tr '\n' ' ' < "$GITHUB_WORKSPACE/.rufux-tools") \
             --exclude-library libwebkit2gtk-4.1.so.0 \
             --exclude-library libjavascriptcoregtk-4.1.so.0 \
             --exclude-library libsoup-3.0.so.0 \
             --exclude-library libgtk-3.so.0 \
             --exclude-library libgdk-3.so.0 \
+            --exclude-library libavif.so.16 \
+            --exclude-library libglycin-2.so.0 \
+            --exclude-library libaom.so.3 \
+            --exclude-library libdav1d.so.7 \
+            --exclude-library librav1e.so.0.8 \
+            --exclude-library libSvtAv1Enc.so.4 \
+            --exclude-library libjxl.so.0.12 \
+            --exclude-library libjxl_cms.so.0.12 \
+            --exclude-library libsharpyuv.so.0 \
+            --exclude-library libyuv.so \
+            --exclude-library libgstreamer-1.0.so.0 \
+            --exclude-library libgstallocators-1.0.so.0 \
+            --exclude-library libgstapp-1.0.so.0 \
+            --exclude-library libgstaudio-1.0.so.0 \
+            --exclude-library libgstbase-1.0.so.0 \
+            --exclude-library libgstfft-1.0.so.0 \
+            --exclude-library libgstgl-1.0.so.0 \
+            --exclude-library libgstpbutils-1.0.so.0 \
+            --exclude-library libgsttag-1.0.so.0 \
+            --exclude-library libgstvideo-1.0.so.0 \
+            --exclude-library libhyphen.so.0 \
+            --exclude-library libxslt.so.1 \
+            --exclude-library libenchant-2.so.2 \
+            --exclude-library libmanette-0.2.so.0 \
+            --exclude-library libsecret-1.so.0 \
             -d AppDir/usr/share/applications/io.github.hultwl.rufux.desktop \
             -i AppDir/usr/share/icons/hicolor/128x128/apps/io.github.hultwl.rufux.png \
             --output appimage
@@ -152,8 +177,9 @@ jobs:
       - name: Verify the bundle
         run: |
           [ -x AppDir/usr/bin/rufux-gui ] || { echo "rufux-gui missing"; exit 1; }
+          [ -x AppDir/usr/bin/rufux-gui.bin ] || { echo "rufux-gui.bin missing"; exit 1; }
           # WebKitGTK must NOT be bundled (host dependency), ...
-          if ls AppDir/usr/lib | grep -qi webkit; then echo "webkit leaked into bundle"; exit 1; fi
+          if ls AppDir/usr/lib | grep -qiE "webkit|avif|glycin|aom|dav1d|rav1e|svtav1|jxl|gst|hyphen|xslt|enchant|manette|secret"; then echo "webkit stack leaked into bundle"; exit 1; fi
           # ...but everything else must resolve against the bundle+host.
           missing="$(find AppDir/usr/bin AppDir/usr/lib -type f -executable 2>/dev/null | while read -r f; do ldd "$f" 2>/dev/null; done | grep 'not found' || true)"
           # webkit/soup/gtk3 come from the host by design; anything else is a bug.
