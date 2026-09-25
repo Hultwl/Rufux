@@ -92,6 +92,9 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build
 sudo cmake --install build
+# ...and the window (needs Rust and cargo):
+cargo build --release --manifest-path gui-tauri/Cargo.toml
+sudo install -m755 gui-tauri/target/release/rufux-gui /usr/local/bin/
 ```
 
 Build needs Rust and cargo (window, `gui-tauri/`), OpenSSL and CMake. The
