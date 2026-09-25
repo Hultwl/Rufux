@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Rufux
 Comment=Bootable USB creator for Linux (Rufus port)
-Exec=rufux --gui
+Exec=rufux-gui
 Icon=io.github.hultwl.rufux
 Terminal=false
 Type=Application

@@ -13,13 +13,11 @@ add_compile_definitions(RUFUX_LOCALEDIR="${CMAKE_INSTALL_PREFIX}/share/locale")
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(CRYPTO REQUIRED libcrypto)
 
-# The interface is GTK4, mirroring Rufus's own window. Without it the
-# build is command-line only.
-set(RUFUX_GUI "auto" CACHE STRING "GUI toolkit: auto, gtk or none")
-set_property(CACHE RUFUX_GUI PROPERTY STRINGS auto gtk none)
-if(RUFUX_GUI STREQUAL "auto" OR RUFUX_GUI STREQUAL "gtk")
-  pkg_check_modules(GTK4 gtk4)
-endif()
+# tauri-gui branch: the graphical interface lives in gui-tauri/ (Tauri +
+# WebView replica of Rufus's dialog) and drives this backend over its CLI.
+# The C binary is always command-line only here; rufux_gui_run is a stub.
+message(STATUS "command-line backend only (GUI is gui-tauri/)")
+set(RUFUX_GUI "none" CACHE STRING "GUI toolkit: none on this branch (see gui-tauri/)")
 
 option(RUFUX_NLS "Native language support (gettext)" ON)
 if(RUFUX_NLS)
@@ -57,17 +55,8 @@ add_executable(rufux
 
 target_include_directories(rufux PRIVATE src/linux src)
 
-# Exactly one of the two provides rufux_gui_run.
-if(GTK4_FOUND AND (RUFUX_GUI STREQUAL "auto" OR RUFUX_GUI STREQUAL "gtk"))
-  message(STATUS "GTK4 found, building the interface")
-  target_sources(rufux PRIVATE src/gui/gui_gtk.c)
-  target_include_directories(rufux PRIVATE ${GTK4_INCLUDE_DIRS})
-  target_link_directories(rufux PRIVATE ${GTK4_LIBRARY_DIRS})
-  target_link_libraries(rufux PRIVATE ${GTK4_LIBRARIES} ${CRYPTO_LIBRARIES})
-else()
-  message(STATUS "GTK4 not found, building command-line only")
-  target_sources(rufux PRIVATE src/gui/gui_stub.c)
-endif()
+# The stub explains that the GUI is gui-tauri/ (separate crate).
+target_sources(rufux PRIVATE src/gui/gui_stub.c)
 
 if(RUFUX_NLS AND Intl_FOUND)
   message(STATUS "NLS enabled (gettext)")

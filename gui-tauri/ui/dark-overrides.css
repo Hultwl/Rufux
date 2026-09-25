@@ -1,0 +1,24 @@
+/* Dark-theme field overhaul. Loaded LAST so it beats the base rules. */
+@media (prefers-color-scheme: dark) {
+  .edit, .combo { background-color: #2b2b2b; color: #f3f3f3; }
+  .combo { border-color: #6b6b6b; }
+  .edit { border-color: #6b6b6b; }
+  .edit:disabled, .combo:disabled { background-color: #202020; color: #8a8a8a; }
+  .check input { background: #2b2b2b; border-color: #d0d0d0; }
+  .check input:checked::before { color: #fff; }
+  .check input:disabled { background: #202020; }
+  .menu { background: #2b2b2b; color: #f3f3f3; border-color: #666; }
+  .menu-item:hover { background: #094771; }
+  .dd-btn {
+    background-color: #2b2b2b; color: #f3f3f3; border-color: #6b6b6b;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='28'%3E%3Crect x='0' y='0' width='18' height='28' fill='%233a3a3a'/%3E%3Crect x='0' y='0' width='1' height='28' fill='%23555'/%3E%3Cpath d='M5 11l4 4 4-4' stroke='%23ddd' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+  }
+  .dd-btn:disabled { background-color: #202020; color: #8a8a8a; }
+  .dd-btn:focus-visible { outline-color: #fff; }
+  .dd-list { background: #2b2b2b; color: #f3f3f3; border-color: #666; }
+  .dd-item:hover, .dd-item.cur { background: #094771; color: #fff; }
+  #logView { background: #1e1e1e; color: #e8e8e8; border-color: #6b6b6b; }
+  .hash-row code { background: #1e1e1e; color: #e8e8e8; border-color: #6b6b6b; }
+  #mbox { border-color: #888; }
+  .persist-row input[type=range] { accent-color: #4cc2ff; }
+}

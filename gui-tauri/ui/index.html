@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rufus 2.0.0</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="dark-overrides.css">
+</head>
+<body>
+<div id="dlg">
+  <div class="sect"><span>Drive Properties</span></div>
+
+  <label class="fld-label" for="cbDevice">Device</label>
+  <div class="row dev-row"><select id="cbDevice" class="combo grow"><option>No USB drive found</option></select><button id="btnSave" class="toolbtn big" title="Save the drive contents to a file"><img src="icons/save-24.png" alt="save"></button></div>
+
+  <label class="fld-label" for="cbBoot">Boot selection</label>
+  <div class="row boot-row">
+    <select id="cbBoot" class="combo grow"><option>Non bootable</option><option>FreeDOS</option><option selected>Disk or ISO image (Please select)</option></select>
+    <button id="btnHash" class="toolbtn big" title="Compute the checksums of the image"><img src="icons/hash-24.png" alt="#"></button>
+    <span id="splitSel" class="split">
+      <button id="btnSelect">SELECT</button><button id="btnSelectArrow" aria-label="More">▾</button>
+      <span id="selMenu" class="menu hidden">
+        <span id="mSelect" class="menu-item checked">SELECT</span>
+        <span id="mDownload" class="menu-item">DOWNLOAD</span>
+      </span>
+    </span>
+  </div>
+
+  <div id="imgOptBlock" class="hidden">
+    <label class="fld-label" for="cbImageOpt">Image option</label>
+    <div class="row"><select id="cbImageOpt" class="combo"><option>Standard Windows installation</option></select></div>
+  </div>
+
+  <div id="persistBlock" class="hidden">
+    <label class="fld-label">Persistent partition size</label>
+    <div class="row persist-row">
+      <input id="persistSlider" type="range" min="0" max="128" value="0">
+      <input id="persistSize" class="edit" value="0">
+      <select id="cbPersistUnits" class="combo units"><option>GB</option><option>MB</option></select>
+    </div>
+  </div>
+
+  <div class="row twocol">
+    <span class="col"><label class="fld-label" for="cbPart">Partition scheme</label>
+      <select id="cbPart" class="combo"><option>MBR</option><option selected>GPT</option></select></span>
+    <span class="col"><label class="fld-label" for="cbTarget">Target system</label>
+      <select id="cbTarget" class="combo"><option>BIOS (or UEFI-CSM)</option><option selected>UEFI (non CSM)</option></select></span>
+  </div>
+
+  <button id="tglAdvDrive" class="chevron"><span class="glyph">►</span> Show advanced drive properties</button>
+  <div id="advDrive" class="hidden">
+    <label class="check"><input type="checkbox" id="chkListHdd"><span>List USB Hard Drives</span></label>
+    <label class="check"><input type="checkbox" id="chkOldBios"><span>Add fixes for old BIOSes (extra partition, align, etc.)</span></label>
+    <div class="row bios-row">
+      <label class="check"><input type="checkbox" id="chkBiosId" disabled><span>Use Rufus MBR with BIOS ID</span></label>
+      <select id="cbBiosId" class="combo" disabled title="Not supported by the Linux backend yet"><option>0x80 (Default)</option></select>
+    </div>
+    <label class="check"><input type="checkbox" id="chkUefiValid"><span>Enable runtime UEFI media validation</span></label>
+  </div>
+
+  <div class="sect"><span>Format Options</span></div>
+
+  <label class="fld-label" for="editLabel">Volume label</label>
+  <div class="row"><input id="editLabel" class="edit full" value="NO_LABEL" spellcheck="false"></div>
+
+  <div class="row twocol">
+    <span class="col"><label class="fld-label" for="cbFs">File system</label>
+      <select id="cbFs" class="combo">
+        <option>Large FAT32</option><option selected>FAT32</option><option>FAT16</option><option>NTFS</option><option>exFAT</option><option>UDF</option><option>ext2</option><option>ext3</option><option>ext4</option>
+      </select></span>
+    <span class="col"><label class="fld-label" for="cbCluster">Cluster size</label>
+      <select id="cbCluster" class="combo">
+        <option>512 bytes</option><option>1024 bytes</option><option>2048 bytes</option><option selected>4096 bytes (Default)</option><option>8192 bytes</option><option>16 kilobytes</option><option>32 kilobytes</option><option>64 kilobytes</option>
+      </select></span>
+  </div>
+
+  <button id="tglAdvFormat" class="chevron"><span class="glyph">►</span> Show advanced format options</button>
+  <div id="advFormat" class="hidden">
+    <label class="check"><input type="checkbox" id="chkQuick" checked><span>Quick format</span></label>
+    <label class="check"><input type="checkbox" id="chkExtLabel" checked><span>Create extended label and icon files</span></label>
+    <div class="row bad-row">
+      <label class="check"><input type="checkbox" id="chkBad"><span>Check device for bad blocks</span></label>
+      <select id="cbPasses" class="combo passes" disabled><option>1 pass</option><option>2 passes</option><option>3 passes</option><option>4 passes</option></select>
+    </div>
+  </div>
+
+  <div class="sect"><span>Status</span></div>
+  <div id="pbar"><div id="pfill"></div><div id="ptext">READY</div></div>
+</div>
+<div id="footer">
+  <div class="row bottom">
+    <span id="mtoolbar">
+      <button class="toolbtn big" id="tbLang" title="English"><img src="icons/lang-24.png" alt="lang"></button><button class="toolbtn big" id="tbAbout" title="About"><img src="icons/info-24.png" alt="about"></button><button class="toolbtn big" id="tbSettings" title="Settings"><img src="icons/settings-24.png" alt="settings"></button><button class="toolbtn big" id="tbLog" title="Show the log"><img src="icons/log-24.png" alt="log"></button>
+    </span>
+    <span class="spacer"></span>
+    <button id="btnStart" class="cmdbtn default">START</button>
+    <button id="btnClose" class="cmdbtn">CLOSE</button>
+  </div>
+  <div id="statusbar"><span id="devCount"></span><span id="clock">00:00:00</span></div>
+</div>
+</div>
+
+<!-- modal overlays (Win32 message-box look) -->
+<div id="overlay" class="hidden"><div id="mbox">
+  <div id="mboxBody"></div>
+  <div id="mboxBtns"></div>
+</div></div>
+
+<div id="wueOverlay" class="hidden"><div id="mbox" class="wide">
+  <div class="mtitle">Windows User Experience</div>
+  <div>Customize Windows installation?</div>
+  <label class="check"><input type="checkbox" id="wBypass" checked><span>Remove requirement for 4GB+ RAM, Secure Boot and TPM 2.0</span></label>
+  <label class="check"><input type="checkbox" id="wNro" checked><span>Remove requirement for an online Microsoft account</span></label>
+  <label class="check"><input type="checkbox" id="wUserOn" checked><span>Create a local account with username:</span></label>
+  <input id="wUser" class="edit" value="user">
+  <label class="check"><input type="checkbox" id="wLocale" checked><span>Set regional options to the same values as this user's</span></label>
+  <label class="check"><input type="checkbox" id="wPrivacy" checked><span>Disable data collection (Skip privacy questions)</span></label>
+  <label class="check"><input type="checkbox" id="wBitlocker" checked><span>Disable BitLocker automatic device encryption</span></label>
+  <label class="check"><input type="checkbox" id="wQol"><span>QoL improvements (Don't force Copilot, OneDrive, Outlook, Fast Startup, etc.)</span></label>
+  <div class="dlg-btns"><button id="wCancel" class="cmdbtn">Cancel</button><button id="wOk" class="cmdbtn default">OK</button></div>
+</div></div>
+
+<div id="dlOverlay" class="hidden"><div id="mbox" class="wide">
+  <div class="mtitle">Download Windows ISO</div>
+  <label class="fld-label">Version</label>
+  <div class="row"><select id="dlVer" class="combo full"><option value="11">Windows 11</option><option value="10">Windows 10</option></select></div>
+  <label class="fld-label">Edition</label>
+  <div class="row"><select id="dlEd" class="combo full"></select></div>
+  <label class="fld-label">Language</label>
+  <div class="row"><select id="dlLang" class="combo full"></select></div>
+  <label class="fld-label">Architecture</label>
+  <div class="row"><select id="dlArch" class="combo full"><option value="">Default (x64)</option><option>x64</option><option>arm64</option></select></div>
+  <div id="dlStatus" class="dl-status">Pick a version to list editions…</div>
+  <div id="pbar" class="dlbar"><div id="dlfill"></div><div id="dltext"></div></div>
+  <div class="dlg-btns"><button id="dlCancel" class="cmdbtn">Cancel</button><button id="dlGo" class="cmdbtn default">Download</button></div>
+</div></div>
+
+<div id="logOverlay" class="hidden"><div id="mbox" class="wide tall">
+  <div class="mtitle">Log</div>
+  <textarea id="logView" readonly></textarea>
+  <div class="dlg-btns"><button id="logClear" class="cmdbtn">Clear</button><button id="logSave" class="cmdbtn">Save</button><button id="logClose" class="cmdbtn default">Close</button></div>
+</div></div>
+
+<div id="hashOverlay" class="hidden"><div id="mbox" class="wide">
+  <div class="mtitle">Checksums</div>
+  <div id="hashRows"><div class="hash-wait">Computing…</div></div>
+  <div class="dlg-btns"><button id="hashClose" class="cmdbtn default">Close</button></div>
+</div></div>
+
+<script src="main.js"></script>
+</body>
+</html>
