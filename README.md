@@ -93,7 +93,9 @@ ctest --test-dir build
 sudo cmake --install build
 ```
 
-Build needs GTK4, OpenSSL and CMake. At run time it uses
+Build needs Rust and cargo (window, `gui-tauri/`), OpenSSL and CMake. The
+window renders in the host's WebKitGTK, which is a run-time requirement
+(never bundled). At run time it uses
 `dosfstools`, `ntfs-3g`, `exfatprogs`, `e2fsprogs`, `util-linux`, `udisks2`,
 `polkit` and `p7zip`. For the Windows 11 checks bypass and FAT32 with a large
 `install.wim` you also want `wimlib` and `hivex`. Package names per

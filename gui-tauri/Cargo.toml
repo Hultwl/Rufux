@@ -1,6 +1,6 @@
 [package]
 name = "rufux-gui"
-version = "2.0.0"
+version = "2.1.0"
 edition = "2021"
 description = "Rufux front end: a 1:1 Rufus dialog replica (Tauri + WebView) driving the rufux CLI backend"
 

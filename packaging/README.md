@@ -17,10 +17,11 @@ The AppImage ships its own helpers (all `mkfs.*`, `sfdisk`,
 plus its MBR data, `udisksctl`, `curl`) bundled under
 `AppDir/usr/bin`, with payloads, locales and MBR data resolved
 exe-relative — see `src/linux/exec.c` (`rufux_exe_dir`) and
-`.github/workflows/appimage.yml` ("Bundle helper tools"). The host
-only needs the `udisks2` daemon running (mounts) and `grub` if you
-use GRUB mode (module tree too big to bundle).
-No Flatpak — sandboxes and raw disks don't mix, tried that, walked away.
+`.github/workflows/appimage.yml` ("Bundle helper tools"). The host needs the `udisks2` daemon running (mounts), `grub` if you
+use GRUB mode (module tree too big to bundle), and WebKitGTK
+(`webkit2gtk-4.1`) for the window - the one thing deliberately not
+bundled (it would add ~150 MB). No Flatpak — sandboxes and raw disks
+don't mix, tried that, walked away.
 
 ## Arch Linux (AUR)
 

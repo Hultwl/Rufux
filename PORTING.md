@@ -3,7 +3,9 @@
 Rufux is based on [pbatard/rufus](https://github.com/pbatard/rufus) at commit
 `2ea79910`. Rufus is about 46,000 lines of Windows-only C. Its sources are
 kept in the tree for reference and are not compiled. The Linux code is in
-`src/linux/` (core and command line) and `src/gui/` (the Qt window).
+`src/linux/` (core and command line) and `gui-tauri/` (the Tauri/WebView
+window, driving the backend over its CLI). The old Qt and GTK windows were
+removed; their sources survive only in git history.
 
 ## Taken from Rufus
 
@@ -20,7 +22,7 @@ kept in the tree for reference and are not compiled. The Linux code is in
 | Formatting (VDS, `FormatEx`) | `mkfs.vfat` (FAT32/FAT16), `mkfs.ntfs`, `mkfs.exfat`, `mkfs.ext4` (ext2/3/4 by `-t`), `mkudffs` |
 | Partitioning (`IOCTL_DISK_*`) | `sfdisk` scripts |
 | Raw disk access | `open()` with `O_EXCL`, `fsync`, `BLKRRPART` |
-| Dialogs | GTK4 |
+| Dialogs | system WebKitGTK through Tauri (host dependency, not bundled) |
 | Administrator rights | `pkexec` for the worker, the window stays unprivileged |
 | Mounting | `udisksctl` |
 

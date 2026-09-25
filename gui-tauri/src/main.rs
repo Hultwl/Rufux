@@ -464,11 +464,6 @@ fn backend_info() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
-fn metrics(dpr: f64, vw: u32, vh: u32, dw: u32, dh: u32) {
-  eprintln!("page: dpr={} viewport={}x{} dlg={}x{}", dpr, vw, vh, dw, dh);
-}
-
-#[tauri::command]
 fn download_dir() -> String {
   std::env::var("XDG_DOWNLOAD_DIR")
     .ok()
@@ -495,47 +490,6 @@ fn close_window(app: AppHandle) {
   }
 }
 
-#[tauri::command]
-fn fit_window(app: AppHandle, height: u32) -> Result<(), String> {
-  use tauri::PhysicalSize;
-  let w = app.get_webview_window("main").ok_or("no main window")?;
-  let outer = w.outer_size().map_err(|e| e.to_string())?;
-  let inner = w.inner_size().map_err(|e| e.to_string())?;
-  let chrome = outer.height.saturating_sub(inner.height);
-  // No window manager (nested/Xvfb): outer size is 0x0, fall back to inner.
-  let wpx = if outer.width > 0 { outer.width } else { inner.width };
-  let scale = w.scale_factor().unwrap_or(1.0);
-  // Never grow past the monitor (minus a margin): beyond that the page
-  // scrolls inside the window instead.
-  let mut want = (height as f64 * scale) as u32;
-  let mut mon_h = 0u32;
-  if let Ok(Some(mon)) = w.current_monitor() {
-    mon_h = mon.size().height;
-    let cap = mon_h.saturating_sub((90.0 * scale) as u32);
-    if cap > 200 {
-      want = want.min(cap);
-    }
-  }
-  let size_h = want.saturating_add(chrome).max(200);
-  let size = tauri::Size::Physical(PhysicalSize {
-    width: wpx,
-    height: size_h,
-  });
-  eprintln!("fit: want_css_h={} inner={}x{} outer={}x{} mon_h={} scale={} -> set {}x{}",
-    height, inner.width, inner.height, outer.width, outer.height, mon_h, scale,
-    wpx, want.saturating_add(chrome).max(200));
-  // Fixed dialog (like real Rufus): no min/max games, a single set_size.
-  // Non-resizable windows float instead of tiling, and floating windows
-  // accept client resizes.
-  let _ = w.set_size(size);
-  std::thread::sleep(std::time::Duration::from_millis(300));
-  match w.inner_size() {
-    Ok(after) => eprintln!("fit: verify inner={}x{}", after.width, after.height),
-    Err(e) => eprintln!("fit: verify failed: {}", e),
-  }
-  Ok(())
-}
-
 fn main() {
   tauri::Builder::default()
     .plugin(tauri_plugin_dialog::init())
@@ -552,9 +506,7 @@ fn main() {
       backend_info,
       download_dir,
       save_file,
-      close_window,
-      fit_window,
-      metrics
+      close_window
     ])
     .run(tauri::generate_context!())
     .expect("failed to run rufux-gui");

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.1
+
+- **The window is a Tauri/WebView replica of Rufus's dialog** (`gui-tauri/`),
+  driving the unchanged CLI backend. The Qt and GTK windows are gone. Same
+  sections, same wording, same order - plus the 2.0 extras (DOWNLOAD split
+  button, persistence, extra file systems) mapped into Rufus's own layout.
+- The AppImage no longer bundles a toolkit. It needs the host's WebKitGTK
+  (`webkit2gtk-4.1`) at run time instead; everything else is still inside.
+  Size is about the same (46 MB vs 42 MB).
+
 ## 2.0
 
 - **Download Windows 11 or 10 from inside Rufux.** A DOWNLOAD button next to

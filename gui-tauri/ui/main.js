@@ -554,7 +554,7 @@ function wire() {
   $("hashClose").onclick = () => $("hashOverlay").classList.add("hidden");
   $("btnStart").onclick = onStart;
   $("btnClose").onclick = async () => { try { await invoke("close_window"); } catch (e) { window.close(); } };
-  $("tbAbout").onclick = () => mbox("Rufux 2.0.0\nCreate bootable USB drives on Linux.\nA Linux port of Rufus by Pete Batard. License: GPLv3.\nhttps://github.com/Hultwl/Rufux", ["OK"]);
+  $("tbAbout").onclick = () => mbox("Rufux 2.1.0\nCreate bootable USB drives on Linux.\nA Linux port of Rufus by Pete Batard. License: GPLv3.\nhttps://github.com/Hultwl/Rufux", ["OK"]);
   $("tbLog").onclick = () => $("logOverlay").classList.remove("hidden");
   $("tbSettings").onclick = () => mbox("Updates are handled by your package manager.", ["OK"]);
   $("tbLang").onclick = () => mbox("English only in this build.", ["OK"]);
@@ -599,7 +599,7 @@ async function boot() {
     wire();
     try {
       const info = await invoke("backend_info");
-      logLine(`Rufux 2.0.0 (backend: ${info.bin})`);
+      logLine(`Rufux 2.1.0 (backend: ${info.bin})`);
     } catch (e) { logLine("Backend missing: " + e); }
     try {
       await armJobEvents();
