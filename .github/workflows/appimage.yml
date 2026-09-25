@@ -194,8 +194,8 @@ jobs:
           [ -x AppDir/usr/bin/rufux-gui ] || { echo "rufux-gui missing"; exit 1; }
           [ -x AppDir/usr/bin/rufux-gui.bin ] || { echo "rufux-gui.bin missing"; exit 1; }
           # The GUI must resolve 100% to the host (no RUNPATH into the
-          # bundle), or old bundled libs shadow the host WebKit stack.
-          if readelf -d AppDir/usr/bin/rufux-gui.bin | grep -qE "RPATH|RUNPATH"; then
+          # bundle): check the packed tree, which is what ships.
+          if readelf -d squashfs-root/usr/bin/rufux-gui.bin | grep -qE "RPATH|RUNPATH"; then
             echo "rufux-gui.bin carries a bundle loader path"; exit 1
           fi
           # WebKitGTK must NOT be bundled (host dependency), ...
