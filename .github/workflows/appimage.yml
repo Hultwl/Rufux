@@ -25,24 +25,30 @@ jobs:
             util-linux dosfstools exfatprogs e2fsprogs mtools ntfs-3g \
             syslinux libarchive-tools p7zip-full xorriso udisks2 \
             wimtools libhivex-bin gawk genisoimage python3 xvfb \
-            parted udftools libgtk-4-dev patchelf librsvg2-dev \
+            parted udftools patchelf librsvg2-dev \
+            libwebkit2gtk-4.1-dev \
             smartmontools qemu-utils grub-pc-bin grub-common sbsigntool openssl \
             qemu-system-x86 fdisk
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
 
-      - name: Configure and build
-        # GTK4 follows the desktop's theme and draws its own window
-        # decorations natively (through the portal when sandboxed, as in an
-        # AppImage) - unlike the previous Qt build, no extra Qt version pin
-        # or GNOME decoration plugin is needed here.
+      - name: Configure and build the backend
+        # CLI-only on this branch (RUFUX_GUI=none); the window is gui-tauri/.
         run: |
           cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
           cmake --build build
+
+      - name: Build the Tauri GUI
+        run: |
+          cargo build --release --manifest-path gui-tauri/Cargo.toml
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
       - name: Install into AppDir
-        run: DESTDIR="$PWD/AppDir" cmake --install build
+        run: |
+          DESTDIR="$PWD/AppDir" cmake --install build
+          install -m755 gui-tauri/target/release/rufux-gui AppDir/usr/bin/rufux-gui
 
       - name: Bundle helper tools
         # Rufux shells out to distro tools instead of linking them in.
@@ -117,28 +123,37 @@ jobs:
         env:
           # GitHub runners have no FUSE: let linuxdeploy run its plugin AppImage extracted.
           APPIMAGE_EXTRACT_AND_RUN: 1
-          # The gtk plugin script needs to know where the core linuxdeploy
-          # AppImage is, since it isn't itself an AppImage that could infer it.
-          LINUXDEPLOY: ${{ github.workspace }}/linuxdeploy-x86_64.AppImage
         run: |
-          # GTK4 draws its own window decorations and reads the desktop's
-          # theme through the settings portal automatically, sandboxed or
-          # not, so unlike the Qt build this needs no extra decoration
-          # plugin and no pinned toolkit version.
+          # No toolkit plugin: the backend is CLI-only and the Tauri GUI
+          # renders in the host's WebKitGTK, which stays a host dependency
+          # (bundling it would add ~150 MB). Exclude it and its stack
+          # explicitly so linuxdeploy doesn't drag it in via ldd.
           ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
             --appdir AppDir \
             -e AppDir/usr/bin/rufux \
+            -e AppDir/usr/bin/rufux-gui \
             $(tr '\n' ' ' < "$GITHUB_WORKSPACE/.rufux-tools") \
+            --exclude-library libwebkit2gtk-4.1.so.0 \
+            --exclude-library libjavascriptcoregtk-4.1.so.0 \
+            --exclude-library libsoup-3.0.so.0 \
+            --exclude-library libgtk-3.so.0 \
+            --exclude-library libgdk-3.so.0 \
             -d AppDir/usr/share/applications/io.github.hultwl.rufux.desktop \
             -i AppDir/usr/share/icons/hicolor/128x128/apps/io.github.hultwl.rufux.png \
-            --plugin gtk \
             --output appimage
           ls -la ./*.AppImage
 
-      - name: Verify the desktop integration is bundled
+      - name: Verify the bundle
         run: |
-          [ -f AppDir/usr/share/glib-2.0/schemas/gschemas.compiled ] || { echo "missing glib schemas"; exit 1; }
-          ls AppDir/usr/lib | grep -c 'libgtk-4' | sed 's/^/GTK4 libraries bundled: /'
+          [ -x AppDir/usr/bin/rufux-gui ] || { echo "rufux-gui missing"; exit 1; }
+          # WebKitGTK must NOT be bundled (host dependency), ...
+          if ls AppDir/usr/lib | grep -qi webkit; then echo "webkit leaked into bundle"; exit 1; fi
+          # ...but everything else must resolve against the bundle+host.
+          missing="$(find AppDir/usr/bin AppDir/usr/lib -type f -executable 2>/dev/null | while read -r f; do ldd "$f" 2>/dev/null; done | grep 'not found' || true)"
+          # webkit/soup/gtk3 come from the host by design; anything else is a bug.
+          other="$(echo "$missing" | grep -v -i -e webkit -e javascriptcore -e 'libsoup' -e 'libgtk-3' -e 'libgdk-3' || true)"
+          [ -z "$other" ] || { echo "unresolved libraries:$other"; exit 1; }
+          echo "bundle OK (host provides: $(echo "$missing" | awk '{print $1}' | sort -u | tr '\n' ' '))"
 
       - name: Verify bundled tools
         # Every helper must have landed in AppDir/usr/bin with
@@ -168,17 +183,19 @@ jobs:
           echo "bundled tools OK"
 
       - name: Smoke test the AppImage
-        # Starts the bundled GTK GUI on a virtual X server (the x11 backend real
-        # users get) and requires it to draw its window, so a broken GTK bundle
-        # fails the release build instead of shipping.
+        # Backend CLI must answer, and the Tauri GUI must stay alive on a
+        # virtual X server (killed by timeout = still running = success).
+        # AppRun maps straight to rufux-gui, so the backend is smoked
+        # from AppDir while the GUI goes through the packed image.
         env:
           APPIMAGE_EXTRACT_AND_RUN: 1
-          RUFUX_GUI_SNAPSHOT: ${{ github.workspace }}/rufux-gui.png
         run: |
           chmod +x ./Rufux-*.AppImage
-          xvfb-run -a ./Rufux-*.AppImage --gui
-          test -s rufux-gui.png
-          ./Rufux-*.AppImage 2>&1 | head -1
+          AppDir/usr/bin/rufux list --json
+          xvfb-run -a ./Rufux-*.AppImage & APPID=$!
+          sleep 12
+          kill -0 $APPID && echo "GUI alive" || { echo "GUI died at startup"; exit 1; }
+          kill $APPID || true
 
       - name: Attach to release
         if: github.event_name == 'release'
