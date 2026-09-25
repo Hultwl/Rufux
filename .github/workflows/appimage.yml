@@ -46,9 +46,15 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
       - name: Install into AppDir
+        # The GUI ships as rufux-gui.bin plus a launcher wrapper: the
+        # wrapper scrubs the bundle loader path so host WebKitGTK never
+        # mixes with the bundle's older glib. AppRun (below) points at
+        # the backend, whose stub hands GUI launches to this wrapper.
         run: |
           DESTDIR="$PWD/AppDir" cmake --install build
-          install -m755 gui-tauri/target/release/rufux-gui AppDir/usr/bin/rufux-gui
+          install -m755 gui-tauri/target/release/rufux-gui AppDir/usr/bin/rufux-gui.bin
+          install -m755 packaging/rufux-gui.sh AppDir/usr/bin/rufux-gui
+          ln -sf usr/bin/rufux AppDir/AppRun
 
       - name: Bundle helper tools
         # Rufux shells out to distro tools instead of linking them in.

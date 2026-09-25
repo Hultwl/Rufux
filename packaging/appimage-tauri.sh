@@ -17,7 +17,9 @@ ls -la gui-tauri/target/release/rufux-gui
 echo "== AppDir =="
 rm -rf AppDir
 DESTDIR="$ROOT/AppDir" cmake --install build >/dev/null
-install -m755 gui-tauri/target/release/rufux-gui AppDir/usr/bin/rufux-gui
+install -m755 gui-tauri/target/release/rufux-gui AppDir/usr/bin/rufux-gui.bin
+install -m755 packaging/rufux-gui.sh AppDir/usr/bin/rufux-gui
+ln -sf usr/bin/rufux AppDir/AppRun
 
 echo "== helper tools =="
 mkdir -p AppDir/usr/bin
