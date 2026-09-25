@@ -1,7 +1,5 @@
 # TODO
 
-- Legacy BIOS boot for Windows media (needs the Windows FAT32 boot record;
-  NTFS cannot be done with mkfs.ntfs).
 - Windows To Go.
 - Rufus's remaining Windows options: silent install, S mode, the 2023
   bootloaders, SkuSiPolicy.

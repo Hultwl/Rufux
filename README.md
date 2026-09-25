@@ -31,8 +31,9 @@ the same job: pick a drive, pick an ISO, press START. I wrote it because I
 kept wanting Rufus on my Linux machine and `dd` was not enough for Windows
 install media.
 
-The window is a copy of Rufus's main window (same sections, same wording),
-drawn with your desktop's own widget style and file dialogs.
+The window is a copy of Rufus's main window (same sections, same wording,
+same order), rendered 1:1 with web tech instead of native widgets - on
+purpose, so it looks like Rufus everywhere instead of almost-Rufus.
 
 ## What it does
 
