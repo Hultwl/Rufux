@@ -137,7 +137,6 @@ jobs:
           ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
             --appdir AppDir \
             -e AppDir/usr/bin/rufux \
-            -e AppDir/usr/bin/rufux-gui.bin \
             $(tr '\n' ' ' < "$GITHUB_WORKSPACE/.rufux-tools") \
             --exclude-library libwebkit2gtk-4.1.so.0 \
             --exclude-library libjavascriptcoregtk-4.1.so.0 \
@@ -174,10 +173,31 @@ jobs:
             --output appimage
           ls -la ./*.AppImage
 
+      - name: Strip the GUI loader path and repack
+        # linuxdeploy stamps $ORIGIN/../lib RUNPATH on every binary it
+        # touches, including rufux-gui.bin - which must resolve 100% to
+        # the host (see the launcher comment in packaging/rufux-gui.sh).
+        # Extract, strip, verify, repack.
+        run: |
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          ./Rufux-*.AppImage --appimage-extract >/dev/null
+          patchelf --remove-rpath squashfs-root/usr/bin/rufux-gui.bin
+          readelf -d squashfs-root/usr/bin/rufux-gui.bin | grep -E "RPATH|RUNPATH" && { echo "rpath survives"; exit 1; } || true
+          rm -f Rufux-x86_64.AppImage
+          export ARCH=x86_64
+          ./appimagetool-x86_64.AppImage --appimage-extract-and-run squashfs-root Rufux-x86_64.AppImage
+          ls -la ./Rufux-*.AppImage
+
       - name: Verify the bundle
         run: |
           [ -x AppDir/usr/bin/rufux-gui ] || { echo "rufux-gui missing"; exit 1; }
           [ -x AppDir/usr/bin/rufux-gui.bin ] || { echo "rufux-gui.bin missing"; exit 1; }
+          # The GUI must resolve 100% to the host (no RUNPATH into the
+          # bundle), or old bundled libs shadow the host WebKit stack.
+          if readelf -d AppDir/usr/bin/rufux-gui.bin | grep -qE "RPATH|RUNPATH"; then
+            echo "rufux-gui.bin carries a bundle loader path"; exit 1
+          fi
           # WebKitGTK must NOT be bundled (host dependency), ...
           if ls AppDir/usr/lib | grep -qiE "webkit|avif|glycin|aom|dav1d|rav1e|svtav1|jxl|gst|hyphen|xslt|enchant|manette|secret"; then echo "webkit stack leaked into bundle"; exit 1; fi
           # ...but everything else must resolve against the bundle+host.

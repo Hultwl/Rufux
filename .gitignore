@@ -8,3 +8,4 @@ rufux-gui.png
 .rufux-tools
 gui-tauri/target/
 gui-tauri/gen/
+squashfs-root/

@@ -62,7 +62,6 @@ export APPIMAGE_EXTRACT_AND_RUN=1
 ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
   --appdir AppDir \
   -e AppDir/usr/bin/rufux \
-  -e AppDir/usr/bin/rufux-gui.bin \
   $(tr '\n' ' ' < "$ROOT/.rufux-tools") \
   --exclude-library libwebkit2gtk-4.1.so.0 \
   --exclude-library libjavascriptcoregtk-4.1.so.0 \
@@ -97,4 +96,17 @@ export APPIMAGE_EXTRACT_AND_RUN=1
   -d AppDir/usr/share/applications/io.github.hultwl.rufux.desktop \
   -i AppDir/usr/share/icons/hicolor/128x128/apps/io.github.hultwl.rufux.png \
   --output appimage
+ls -la ./*.AppImage
+
+# linuxdeploy stamps $ORIGIN/../lib RUNPATH on everything it touches.
+# The GUI must resolve 100% to the host: strip, verify, repack.
+[ -x appimagetool-x86_64.AppImage ] || wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+chmod +x appimagetool-x86_64.AppImage
+rm -rf squashfs-root
+./Rufux-x86_64.AppImage --appimage-extract >/dev/null
+patchelf --remove-rpath squashfs-root/usr/bin/rufux-gui.bin
+readelf -d squashfs-root/usr/bin/rufux-gui.bin | grep -E "RPATH|RUNPATH" && { echo "rpath survives"; exit 1; } || true
+rm -f Rufux-x86_64.AppImage
+ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run squashfs-root Rufux-x86_64.AppImage
+rm -rf squashfs-root
 ls -la ./*.AppImage
