@@ -2,21 +2,24 @@
 
 ## 2.2
 
-- **The window speaks 34 languages.** Translations come from Rufus's own
-  `.po` files (`packaging/build-i18n.py` builds `gui-tauri/ui/i18n.js`
-  from them), with Arabic fully covered including RTL layout, and the
-  desktop language picked up automatically. Hebrew and Farsi are excluded
-  by maintainer choice. Missing strings fall back to English.
-- **Download dialog fixed.** It used to sit at "Ready." over an empty
-  progress box; now the progress bar stays hidden until a download runs,
-  and the status line says what is actually happening (asking Microsoft,
-  not ready).
-- Small honesty fixes: the decorative "old BIOS fixes" checkbox is gone,
-  `rufux --gui image.iso` opens the image again, the Windows-options
-  dialog copies your real system locale instead of assuming en-US, and
-  the `--theme` flag that never did anything is out of the docs.
-- Docs: `tests/HW_MATRIX.md` deleted, TODO trimmed to Windows To Go and
-  the UDisks2 D-Bus backend, ReFS documented as refused by design.
+- Window: 34 interface languages from Rufus's own translations, Arabic
+  fully covered with right-to-left layout. Desktop language is
+  auto-detected, globe icon to switch; missing strings fall back to
+  English. (`packaging/build-i18n.py` regenerates `gui-tauri/ui/i18n.js`.)
+- Window: language menu opens upward (it rendered off-screen); title
+  bar now says Rufux.
+- Download dialog: progress bar hidden until a download runs; status
+  line reports the actual stage.
+- Removed the "old BIOS fixes" checkbox (it did nothing);
+  `rufux --gui image.iso` opens the image again; the Windows-options
+  dialog copies the real system locale; the `--theme` flag that was
+  never implemented is out of the docs.
+- AppImage: backend is the entry point again with an internal GUI
+  handoff, the GUI resolves only to host libraries, WebKit/codec
+  strays are excluded, CI verifies the bundle and smoke-boots it.
+- Docs: deleted `tests/HW_MATRIX.md`, trimmed TODO to Windows To Go
+  and the UDisks2 D-Bus backend, ReFS documented as refused by design,
+  save-image and BIOS-ID listed as missing.
 
 ## 2.1
 
