@@ -464,6 +464,19 @@ fn backend_info() -> Result<serde_json::Value, String> {
 }
 
 #[tauri::command]
+fn startup_file() -> Option<String> {
+  for a in std::env::args().skip(1) {
+    if a == "gui" || a == "--gui" || a.starts_with('-') {
+      continue;
+    }
+    if std::path::Path::new(&a).is_file() {
+      return Some(a);
+    }
+  }
+  None
+}
+
+#[tauri::command]
 fn download_dir() -> String {
   std::env::var("XDG_DOWNLOAD_DIR")
     .ok()
@@ -505,6 +518,7 @@ fn main() {
       checksum,
       backend_info,
       download_dir,
+      startup_file,
       save_file,
       close_window
     ])

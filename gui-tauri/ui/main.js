@@ -491,7 +491,11 @@ async function askWue() {
       if ($("wBitlocker").checked) parts.push("bitlocker");
       if ($("wQol").checked) parts.push("qol");
       const extra = [];
-      if ($("wLocale").checked) { parts.push("locale"); extra.push("--locale", "en-US"); }
+      if ($("wLocale").checked) {
+        parts.push("locale");
+        const tag = ((navigator.language || "en-US") + "").replace("_", "-");
+        extra.push("--locale", tag);
+      }
       if ($("wUserOn").checked) {
         const u = $("wUser").value.trim();
         if (!u) { mbox(t("enter_user"), [t("ok")]); resolve(askWue()); return; }
@@ -742,7 +746,7 @@ async function boot() {
     wire();
     try {
       const info = await invoke("backend_info");
-      logLine(`Rufux 2.1.0 (backend: ${info.bin})`);
+      logLine(`Rufux 2.2.0 (backend: ${info.bin})`);
     } catch (e) { logLine("Backend missing: " + e); }
     try {
       await armJobEvents();
@@ -759,6 +763,10 @@ async function boot() {
     setFsOptions(false);
     buildLangMenu();
     applyI18n();
+    try {
+      const f = await invoke("startup_file");
+      if (f) loadImage(f);
+    } catch (e) { /* no startup file */ }
   } catch (e) {
     try { mbox(t("startup_failed") + e, [t("ok")]); } catch (e2) { /* noop */ }
   }

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2.2
 
 - **The window speaks 34 languages.** Translations come from Rufus's own
   `.po` files (`packaging/build-i18n.py` builds `gui-tauri/ui/i18n.js`
@@ -11,6 +11,10 @@
   progress box; now the progress bar stays hidden until a download runs,
   and the status line says what is actually happening (asking Microsoft,
   not ready).
+- Small honesty fixes: the decorative "old BIOS fixes" checkbox is gone,
+  `rufux --gui image.iso` opens the image again, the Windows-options
+  dialog copies your real system locale instead of assuming en-US, and
+  the `--theme` flag that never did anything is out of the docs.
 - Docs: `tests/HW_MATRIX.md` deleted, TODO trimmed to Windows To Go and
   the UDisks2 D-Bus backend, ReFS documented as refused by design.
 

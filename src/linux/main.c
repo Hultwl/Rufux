@@ -56,7 +56,7 @@ static void usage(const char *p) {
          "  %s update-check\n"
          "  %s create SRC|none DST --mode dd|extract|format|dos|windows [--scheme gpt|dos] [--fs vfat|fat16|ntfs|exfat|ext2|ext3|ext4|udf] [--label L] [--persist-mb N] [--cluster-sectors N] [--badblock-passes N] [--wue bypass,nro,privacy,bitlocker,locale,qol,user=NAME,all,none] [--split-wim MB] [--locale TAG] [--keyboard KLID] [--timezone ZONE] [--quick|--full] [--no-autorun] [--uefi-validate] [--ignore-smart] [--dry-run|--real] [--allow-file] [--allow-fixed] [--yes] [--verify]\n"
          "  %s download-windows [--list | --list-langs] [--version 11|10] [--edition N] [--lang NAME] [--arch x64|ARM64|x86] [--out DIR] [--url-only]\n"
-         "  %s --gui [--theme system|dark|light]\n",
+         "  %s --gui [image.iso]\n",
          RUFUX_VERSION, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p, p);
 }
 

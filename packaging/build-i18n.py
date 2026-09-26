@@ -41,7 +41,6 @@ STRINGS = [
     ("adv_drive_noun", "advanced drive properties", False),
     ("adv_fmt_noun", "advanced format options", False),
     ("list_hdd", "List USB Hard Drives", False),
-    ("old_bios", "Add fixes for old BIOSes (extra partition, align, etc.)", False),
     ("bios_id", None, False),
     ("bios_id_val", None, False),
     ("uefi_valid", "Enable runtime UEFI media validation", False),

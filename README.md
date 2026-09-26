@@ -75,7 +75,8 @@ purpose, so it looks like Rufus everywhere instead of almost-Rufus.
   Windows edition list comes from Fido and needs updating when Microsoft
   publishes a new release.
 - The revocation lists are a snapshot; they age until the next release.
-- Not there: Windows To Go. ReFS is refused by design,
+- Not there: Windows To Go, saving a drive back to a file, and the Rufus
+  MBR-with-BIOS-ID option. ReFS is refused by design,
   not by accident: it is a datacenter filesystem with no Linux formatter,
   and it makes no sense on a USB stick. See [PORTING.md](PORTING.md).
 
