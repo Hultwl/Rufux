@@ -213,7 +213,7 @@ button {
 
 /* language menu on the toolbar */
 #mtoolbar { position: relative; }
-#langMenu { position: absolute; bottom: 100%; left: 0; min-width: 200px; max-height: 300px; overflow-y: auto; }
+#langMenu { position: absolute; top: auto; bottom: 100%; left: 0; min-width: 200px; max-height: 300px; overflow-y: auto; }
 
 /* right-to-left languages (Arabic) */
 [dir="rtl"] .dd-list { left: auto; right: 0; }
