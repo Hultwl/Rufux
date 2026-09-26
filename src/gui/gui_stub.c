@@ -12,32 +12,39 @@
 
 int rufux_gui_run(int argc, char **argv) {
   (void)argc;
-  (void)argv;
-  if (getenv("DISPLAY") || getenv("WAYLAND_DISPLAY")) {
-    char self[4096] = {0};
-    ssize_t n = readlink("/proc/self/exe", self, sizeof self - 1);
-    if (n > 0) {
-      self[n] = 0;
-      char *slash = strrchr(self, '/');
-      if (slash) {
-        // Prefer the wrapper (it drops the bundle loader path so the host
-        // WebKit never mixes with the bundled glib), fall back to the raw
-        // binary (developer trees, AUR without wrapper).
-        static const char *names[] = {"rufux-gui", "rufux-gui.bin", NULL};
-        for (int i = 0; names[i]; i++) {
-          char path[4192];
-          snprintf(path, sizeof path, "%.*s/%s", (int)(slash - self), self, names[i]);
-          if (!access(path, X_OK)) {
-            execv(path, argv);
-            break;  // exec failed; fall through to the message
-          }
-        }
-      }
+  if (!getenv("DISPLAY") && !getenv("WAYLAND_DISPLAY")) {
+    fprintf(stderr,
+            "This build of Rufux has no graphical interface linked in: run "
+            "gui-tauri/ for the window, or use the command line (run rufux "
+            "with no arguments for the options).\n");
+    return 1;
+  }
+  char self[4096] = {0};
+  ssize_t n = readlink("/proc/self/exe", self, sizeof self - 1);
+  if (n <= 0)
+    return 1;
+  self[n] = 0;
+  char *slash = strrchr(self, '/');
+  if (!slash)
+    return 1;
+  // The window renders in host WebKitGTK (too big to bundle, must match
+  // the host graphics stack). Scrub the bundle loader path here - a
+  // wrapper script cannot do it reliably ($0 is the AppImage, not the
+  // wrapper, after the handoff) - so every library resolves to the
+  // system. Harmless on plain installs where it is already unset.
+  unsetenv("LD_LIBRARY_PATH");
+  // The GUI binary lives next to the backend everywhere (AppImage,
+  // /usr/bin, development trees alike).
+  static const char *names[] = {"rufux-gui", NULL};
+  for (int i = 0; names[i]; i++) {
+    char path[4192];
+    snprintf(path, sizeof path, "%.*s/%s", (int)(slash - self), self, names[i]);
+    if (!access(path, X_OK)) {
+      argv[0] = path;
+      execv(path, argv);
+      break;  // exec failed; try the next name, then give up below
     }
   }
-  fprintf(stderr,
-          "This build of Rufux has no graphical interface linked in: run "
-          "gui-tauri/ for the window, or use the command line (run rufux "
-          "with no arguments for the options).\n");
+  fprintf(stderr, "rufux: graphical interface not found next to %s\n", self);
   return 1;
 }

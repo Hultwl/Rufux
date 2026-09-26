@@ -46,14 +46,11 @@ jobs:
         run: ctest --test-dir build --output-on-failure
 
       - name: Install into AppDir
-        # The GUI ships as rufux-gui.bin plus a launcher wrapper: the
-        # wrapper scrubs the bundle loader path so host WebKitGTK never
-        # mixes with the bundle's older glib. AppRun (below) points at
-        # the backend, whose stub hands GUI launches to this wrapper.
+        # The backend entry (AppRun) hands GUI launches to the bundled GUI
+        # binary next to it; see gui_stub.c.
         run: |
           DESTDIR="$PWD/AppDir" cmake --install build
-          install -m755 gui-tauri/target/release/rufux-gui AppDir/usr/bin/rufux-gui.bin
-          install -m755 packaging/rufux-gui.sh AppDir/usr/bin/rufux-gui
+          install -m755 gui-tauri/target/release/rufux-gui AppDir/usr/bin/rufux-gui
           ln -sf usr/bin/rufux AppDir/AppRun
 
       - name: Bundle helper tools
@@ -119,10 +116,7 @@ jobs:
       - name: Fetch linuxdeploy
         run: |
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          # Unlike linuxdeploy-plugin-qt, the GTK plugin isn't published as a
-          # prebuilt AppImage under a release tag - it's a shell script.
-          wget -q https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
-          chmod +x linuxdeploy-x86_64.AppImage linuxdeploy-plugin-gtk.sh
+          chmod +x linuxdeploy-x86_64.AppImage
           echo "$PWD" >> "$GITHUB_PATH"
 
       - name: Bundle AppImage
@@ -137,6 +131,7 @@ jobs:
           ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
             --appdir AppDir \
             -e AppDir/usr/bin/rufux \
+            -e AppDir/usr/bin/rufux-gui \
             $(tr '\n' ' ' < "$GITHUB_WORKSPACE/.rufux-tools") \
             --exclude-library libwebkit2gtk-4.1.so.0 \
             --exclude-library libjavascriptcoregtk-4.1.so.0 \
@@ -175,15 +170,16 @@ jobs:
 
       - name: Strip the GUI loader path and repack
         # linuxdeploy stamps $ORIGIN/../lib RUNPATH on every binary it
-        # touches, including rufux-gui.bin - which must resolve 100% to
-        # the host (see the launcher comment in packaging/rufux-gui.sh).
+        # touches, including rufux-gui - which must resolve 100% to the
+        # host (the backend stub scrubs the bundle loader path first;
+        # see gui_stub.c).
         # Extract, strip, verify, repack.
         run: |
           wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool-x86_64.AppImage
           ./Rufux-*.AppImage --appimage-extract >/dev/null
-          patchelf --remove-rpath squashfs-root/usr/bin/rufux-gui.bin
-          readelf -d squashfs-root/usr/bin/rufux-gui.bin | grep -E "RPATH|RUNPATH" && { echo "rpath survives"; exit 1; } || true
+          patchelf --remove-rpath squashfs-root/usr/bin/rufux-gui
+          readelf -d squashfs-root/usr/bin/rufux-gui | grep -E "RPATH|RUNPATH" && { echo "rpath survives"; exit 1; } || true
           rm -f Rufux-x86_64.AppImage
           export ARCH=x86_64
           ./appimagetool-x86_64.AppImage --appimage-extract-and-run squashfs-root Rufux-x86_64.AppImage
@@ -192,11 +188,11 @@ jobs:
       - name: Verify the bundle
         run: |
           [ -x AppDir/usr/bin/rufux-gui ] || { echo "rufux-gui missing"; exit 1; }
-          [ -x AppDir/usr/bin/rufux-gui.bin ] || { echo "rufux-gui.bin missing"; exit 1; }
+          [ -x AppDir/usr/bin/rufux-gui ] || { echo "rufux-gui missing (2)"; exit 1; }
           # The GUI must resolve 100% to the host (no RUNPATH into the
           # bundle): check the packed tree, which is what ships.
-          if readelf -d squashfs-root/usr/bin/rufux-gui.bin | grep -qE "RPATH|RUNPATH"; then
-            echo "rufux-gui.bin carries a bundle loader path"; exit 1
+          if readelf -d squashfs-root/usr/bin/rufux-gui | grep -qE "RPATH|RUNPATH"; then
+            echo "rufux-gui carries a bundle loader path"; exit 1
           fi
           # WebKitGTK must NOT be bundled (host dependency), ...
           if ls AppDir/usr/lib | grep -qiE "webkit|avif|glycin|aom|dav1d|rav1e|svtav1|jxl|gst|hyphen|xslt|enchant|manette|secret"; then echo "webkit stack leaked into bundle"; exit 1; fi

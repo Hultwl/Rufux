@@ -17,8 +17,7 @@ ls -la gui-tauri/target/release/rufux-gui
 echo "== AppDir =="
 rm -rf AppDir
 DESTDIR="$ROOT/AppDir" cmake --install build >/dev/null
-install -m755 gui-tauri/target/release/rufux-gui AppDir/usr/bin/rufux-gui.bin
-install -m755 packaging/rufux-gui.sh AppDir/usr/bin/rufux-gui
+install -m755 gui-tauri/target/release/rufux-gui AppDir/usr/bin/rufux-gui
 ln -sf usr/bin/rufux AppDir/AppRun
 
 echo "== helper tools =="
@@ -104,8 +103,8 @@ ls -la ./*.AppImage
 chmod +x appimagetool-x86_64.AppImage
 rm -rf squashfs-root
 ./Rufux-x86_64.AppImage --appimage-extract >/dev/null
-patchelf --remove-rpath squashfs-root/usr/bin/rufux-gui.bin
-readelf -d squashfs-root/usr/bin/rufux-gui.bin | grep -E "RPATH|RUNPATH" && { echo "rpath survives"; exit 1; } || true
+patchelf --remove-rpath squashfs-root/usr/bin/rufux-gui
+readelf -d squashfs-root/usr/bin/rufux-gui | grep -E "RPATH|RUNPATH" && { echo "rpath survives"; exit 1; } || true
 rm -f Rufux-x86_64.AppImage
 ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run squashfs-root Rufux-x86_64.AppImage
 rm -rf squashfs-root
