@@ -18,7 +18,7 @@
   .dd-list { background: #2b2b2b; color: #f3f3f3; border-color: #666; }
   .dd-item:hover, .dd-item.cur { background: #094771; color: #fff; }
   #logView { background: #1e1e1e; color: #e8e8e8; border-color: #6b6b6b; }
+  .mbox { border-color: #888; }
   .hash-row code { background: #1e1e1e; color: #e8e8e8; border-color: #6b6b6b; }
-  #mbox { border-color: #888; }
   .persist-row input[type=range] { accent-color: #4cc2ff; }
 }

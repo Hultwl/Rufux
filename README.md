@@ -75,7 +75,9 @@ purpose, so it looks like Rufus everywhere instead of almost-Rufus.
   Windows edition list comes from Fido and needs updating when Microsoft
   publishes a new release.
 - The revocation lists are a snapshot; they age until the next release.
-- Not there: ReFS, Windows To Go, the language button. See [PORTING.md](PORTING.md).
+- Not there: Windows To Go. ReFS is refused by design,
+  not by accident: it is a datacenter filesystem with no Linux formatter,
+  and it makes no sense on a USB stick. See [PORTING.md](PORTING.md).
 
 ## Install
 
@@ -131,7 +133,6 @@ Run `rufux` with no arguments for every option, or `man rufux`.
 - [PORTING.md](PORTING.md): what comes from Rufus and what is different
 - [CHANGELOG.md](CHANGELOG.md)
 - [docs/TODO.md](docs/TODO.md)
-- [tests/HW_MATRIX.md](tests/HW_MATRIX.md): what I have tried on real drives
 
 Bug reports help most with the log attached (Log button, then Save).
 

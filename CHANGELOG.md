@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **The window speaks 34 languages.** Translations come from Rufus's own
+  `.po` files (`packaging/build-i18n.py` builds `gui-tauri/ui/i18n.js`
+  from them), with Arabic fully covered including RTL layout, and the
+  desktop language picked up automatically. Hebrew and Farsi are excluded
+  by maintainer choice. Missing strings fall back to English.
+- **Download dialog fixed.** It used to sit at "Ready." over an empty
+  progress box; now the progress bar stays hidden until a download runs,
+  and the status line says what is actually happening (asking Microsoft,
+  not ready).
+- Docs: `tests/HW_MATRIX.md` deleted, TODO trimmed to Windows To Go and
+  the UDisks2 D-Bus backend, ReFS documented as refused by design.
+
 ## 2.1
 
 - **The window is a Tauri/WebView replica of Rufus's dialog** (`gui-tauri/`),

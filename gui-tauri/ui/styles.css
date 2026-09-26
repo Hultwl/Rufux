@@ -186,22 +186,38 @@ button {
   position: fixed; inset: 0; background: rgba(0,0,0,.35);
   display: grid; place-content: center; z-index: 100;
 }
-#mbox {
+.mbox {
   background: var(--face); color: var(--text);
   border: 1px solid #555; box-shadow: 3px 3px 10px rgba(0,0,0,.5);
   padding: 12px; width: 340px; max-height: 90vh; overflow: auto;
 }
-#mbox.wide { width: 380px; }
-#mbox .mtitle { font-weight: bold; margin-bottom: 6px; }
+.mbox.wide { width: 380px; }
+.mbox .mtitle { font-weight: bold; margin-bottom: 6px; }
 #mboxBody { margin-bottom: 10px; white-space: pre-wrap; }
 #mboxBtns, .dlg-btns { display: flex; justify-content: flex-end; gap: 6px; margin-top: 10px; }
 #logView {
   width: 100%; height: 300px; font: 11px Consolas, "Lucida Console", monospace;
   background: #fff; color: #000; border: 1px solid var(--edit-edge);
 }
-#mbox.tall { width: 420px; }
+.mbox.tall { width: 420px; }
 .hash-row { display: flex; gap: 6px; margin: 4px 0; align-items: baseline; }
 .hash-row b { width: 52px; flex: none; }
 .hash-row code { font: 10px Consolas, monospace; word-break: break-all; background: #fff; color: #000; border: 1px solid var(--edit-edge); padding: 2px 4px; flex: 1; }
 .dl-status { margin: 6px 0; min-height: 16px; }
 .dlbar { margin: 4px 0; }
+
+/* download progress (hidden until a download runs) */
+#dlbar { position: relative; height: 24px; background: var(--track); border: 1px solid #bcbcbc; margin: 4px 0; }
+#dlfill { position: absolute; inset: 0; width: 0%; background: var(--fill); }
+#dltext { position: absolute; inset: 0; display: grid; place-content: center; }
+
+/* language menu on the toolbar */
+#mtoolbar { position: relative; }
+#langMenu { position: absolute; bottom: 100%; left: 0; min-width: 200px; max-height: 300px; overflow-y: auto; }
+
+/* right-to-left languages (Arabic) */
+[dir="rtl"] .dd-list { left: auto; right: 0; }
+[dir="rtl"] .menu { right: auto; left: 0; }
+[dir="rtl"] #btnSelect { border-right: 1px solid var(--btn-edge); border-left: none; }
+[dir="rtl"] .twocol { direction: rtl; }
+[dir="rtl"] .check { direction: rtl; }

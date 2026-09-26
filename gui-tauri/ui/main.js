@@ -9,6 +9,134 @@ let selectMode = 0; // 0 = SELECT file, 1 = DOWNLOAD (split button, like Rufus)
 let jobId = 0, jobKind = "", jobLastError = "";
 let dlJob = 0;
 
+/* ---------- i18n (Rufus's own translations; he-IL/fa-IR excluded) ---------- */
+let LANG = "en-US";
+try {
+  LANG = localStorage.getItem("rufux.lang") || "";
+  if (!LANG && window.RUFUX_I18N) {
+    const nav = (navigator.language || "en-US").replace("_", "-");
+    const codes = Object.keys(window.RUFUX_I18N).filter((k) => !k.startsWith("_"));
+    LANG = codes.find((c) => c.toLowerCase() === nav.toLowerCase())
+      || codes.find((c) => c.split("-")[0].toLowerCase() === nav.split("-")[0].toLowerCase())
+      || "en-US";
+  }
+} catch (e) { LANG = "en-US"; }
+const UPPER_KEYS = new Set((window.RUFUX_I18N && window.RUFUX_I18N._keys_upper) || []);
+function t(key) {
+  const I = window.RUFUX_I18N || {};
+  const d = I[LANG] || {};
+  let s = d[key];
+  if (!s) s = (I["en-US"] || {})[key];
+  if (!s) return key;
+  if (UPPER_KEYS.has(key)) { try { s = s.toLocaleUpperCase(LANG); } catch (e) { s = s.toUpperCase(); } }
+  return s;
+}
+function fmt(s) {
+  const args = Array.prototype.slice.call(arguments, 1);
+  let i = 0;
+  return String(s).replace(/%[ds]/g, () => (i < args.length ? args[i++] : ""));
+}
+function toggleText(collapsed, what) {
+  return fmt(t(collapsed ? "show_tpl" : "hide_tpl"),
+    t(what === "drive" ? "adv_drive_noun" : "adv_fmt_noun"));
+}
+function refreshDevCount() {
+  const n = devs.length;
+  let s;
+  if (LANG === "ar-SA") {
+    if (n === 1) s = t("dev1");
+    else if (n === 2) s = t("devN_ar2");
+    else if (n <= 10) s = fmt(t("devN_ar310"), n);
+    else s = fmt(t("devN_ar11"), n);
+  } else {
+    s = fmt(t(n === 1 ? "dev1" : "devN"), n);
+  }
+  $("devCount").textContent = s;
+}
+function setOpts(sel, items) {
+  // items: [value, key-or-literal, isKey]
+  const idx = sel.selectedIndex < 0 ? 0 : sel.selectedIndex;
+  sel.innerHTML = "";
+  items.forEach(([v, k, isKey]) => {
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = isKey ? t(k) : k;
+    sel.appendChild(o);
+  });
+  sel.selectedIndex = Math.min(idx, items.length - 1);
+  DD.sync(sel);
+}
+const FS_KEYS = { large: "large_fat32", vfat: "fat32", fat16: "fat16", ntfs: "ntfs", exfat: "exfat", udf: "udf", ext2: "ext2", ext3: "ext3", ext4: "ext4" };
+const CL_KEYS = ["cl_512", "cl_1024", "cl_2048", "cl_4096", "cl_8192", "cl_16k", "cl_32k", "cl_64k"];
+const CL_VALS = ["s1", "s2", "s4", "s0", "s16", "s32", "s64", "s128"];
+function rebuildCombos() {
+  const boot = $("cbBoot");
+  const bIdx = boot.selectedIndex;
+  const bDyn = isoPath ? boot.options[2].text : "";
+  setOpts(boot, [[0, "nonboot", true], [1, "freedos", true], [2, bDyn || t("iso_please"), false]]);
+  boot.selectedIndex = bIdx < 0 ? 2 : bIdx;
+  DD.sync(boot);
+  setOpts($("cbImageOpt"), [["std", "std_win", true]]);
+  setOpts($("cbPersistUnits"), [["GB", "gb", true], ["MB", "mb", true]]);
+  setOpts($("cbPart"), [["mbr", "mbr", true], ["gpt", "gpt", true]]);
+  setOpts($("cbTarget"), [["bios", "bios_csm", true], ["uefi", "uefi_nocsm", true]]);
+  setOpts($("cbBiosId"), [["80", "bios_id_val", true]]);
+  setOpts($("cbCluster"), CL_VALS.map((v, i) => [v, CL_KEYS[i], true]));
+  setOpts($("cbPasses"), [["p1", "pass1", true], ["p2", "pass2", true], ["p3", "pass3", true], ["p4", "pass4", true]]);
+  setOpts($("dlVer"), [["11", "win11", true], ["10", "win10", true]]);
+  setOpts($("dlArch"), [["", "arch_def", true], ["x64", "x64", false], ["arm64", "arm64", false]]);
+  setFsOptions(isoWindows);
+  DD.syncAll();
+}
+function applyI18n() {
+  const meta = (window.RUFUX_I18N && window.RUFUX_I18N._meta) || {};
+  const rtl = !!(meta[LANG] && meta[LANG].rtl);
+  document.documentElement.dir = rtl ? "rtl" : "ltr";
+  document.documentElement.lang = LANG;
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.getAttribute("data-i18n")); });
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => { el.title = t(el.getAttribute("data-i18n-title")); });
+  rebuildCombos();
+  $("mSelect").textContent = t("select");
+  $("mDownload").textContent = t("download");
+  syncSelectBtn();
+  setToggle("tglAdvDrive", "advDrive", "drive");
+  setToggle("tglAdvFormat", "advFormat", "format");
+  setProgress(null, t("ready"));
+  refreshDevCount();
+  DD.syncAll();
+}
+function syncSelectBtn() { $("btnSelect").textContent = selectMode === 1 ? t("download") : t("select"); }
+function setToggle(tgl, body, what) {
+  const collapsed = $(body).classList.contains("hidden");
+  $(tgl).querySelector(".glyph").textContent = collapsed ? "►" : "▼";
+  $(tgl).querySelector(".tgl-text").textContent = " " + toggleText(collapsed, what);
+}
+function buildLangMenu() {
+  const m = $("langMenu");
+  m.innerHTML = "";
+  const I = window.RUFUX_I18N || {};
+  const meta = I._meta || {};
+  const codes = ["en-US", ...Object.keys(I).filter((k) => !k.startsWith("_") && k !== "en-US").sort()];
+  codes.forEach((c) => {
+    const s = document.createElement("span");
+    s.className = "menu-item" + (c === LANG ? " checked" : "");
+    s.textContent = (meta[c] && meta[c].name) || c;
+    s.onclick = (ev) => {
+      ev.stopPropagation();
+      m.classList.add("hidden");
+      setLang(c);
+    };
+    m.appendChild(s);
+  });
+}
+function setLang(c) {
+  LANG = (window.RUFUX_I18N && window.RUFUX_I18N[c]) ? c : "en-US";
+  try { localStorage.setItem("rufux.lang", c); } catch (e) {}
+  buildLangMenu();
+  applyI18n();
+  refreshDevices();
+}
+
 function humanSize(b) {
   const u = ["B", "KB", "MB", "GB", "TB"];
   let v = +b, i = 0;
@@ -152,7 +280,10 @@ async function refreshDevices() {
     const cb = $("cbDevice");
     cb.innerHTML = "";
     if (!list.length) {
-      cb.innerHTML = "<option>No USB drive found</option>";
+      const o = document.createElement("option");
+      o.value = "";
+      o.textContent = t("no_usb");
+      cb.appendChild(o);
     } else {
       let ki = 0;
       list.forEach((d, i) => {
@@ -165,7 +296,7 @@ async function refreshDevices() {
       cb.selectedIndex = ki;
     }
     const n = list.length;
-    $("devCount").textContent = n === 1 ? "1 device found" : `${n} devices found`;
+    refreshDevCount();
     DD.sync($("cbDevice"));
   } catch (e) {
     const cb = $("cbDevice");
@@ -182,14 +313,14 @@ function selectedDevice() {
 
 /* ---------- labels ---------- */
 function fsKey() {
-  const t = $("cbFs").value;
-  if (t.startsWith("FAT16")) return "fat16";
-  if (t === "FAT32" || t === "Large FAT32") return "vfat";
-  if (t.startsWith("exFAT")) return "exfat";
-  if (t === "UDF") return "udf";
-  if (t === "ext2") return "ext2";
-  if (t === "ext3") return "ext3";
-  if (t === "ext4") return "ext4";
+  const v = $("cbFs").value;
+  if (v === "fat16") return "fat16";
+  if (v === "vfat" || v === "large") return "vfat";
+  if (v === "exfat") return "exfat";
+  if (v === "udf") return "udf";
+  if (v === "ext2") return "ext2";
+  if (v === "ext3") return "ext3";
+  if (v === "ext4") return "ext4";
   return "ntfs";
 }
 function labelLimit(fs) {
@@ -220,14 +351,14 @@ function syncEnabled() {
   const fs = fsKey();
   $("cbCluster").disabled = run || !(fs === "vfat" || fs === "ntfs" || fs === "fat16");
   $("btnClose").disabled = run;
-  $("btnStart").textContent = run ? "CANCEL" : "START";
+  $("btnStart").textContent = run ? t("cancel_op") : t("start");
   DD.syncAll();
   fit();
 }
 
 /* ---------- image probe ---------- */
 async function loadImage(path) {
-  setProgress(null, "Reading image…");
+  setProgress(null, t("reading"));
   try {
     const info = await invoke("probe_iso", { path });
     isoPath = path;
@@ -237,44 +368,52 @@ async function loadImage(path) {
     isoLabel = info.label && info.label !== "(none)" ? info.label : "";
     const base = path.split(/[\\/]/).pop();
     const cb = $("cbBoot");
+    const bIdx = cb.selectedIndex;
     cb.innerHTML = "";
-    ["Non bootable", "FreeDOS", base].forEach((t) => {
-      const o = document.createElement("option"); o.textContent = t; cb.appendChild(o);
+    [[0, "nonboot", true], [1, "freedos", true]].forEach(([v, k]) => {
+      const o = document.createElement("option");
+      o.value = v;
+      o.textContent = t(k);
+      cb.appendChild(o);
     });
+    const bo = document.createElement("option");
+    bo.value = 2;
+    bo.textContent = base;
+    cb.appendChild(bo);
     cb.selectedIndex = 2;
     DD.sync(cb);
     logLine(`Using image: ${path} (${humanSize(info.size_bytes)})`);
     if (isoWindows) {
       setFsOptions(true);
-      $("cbFs").value = "NTFS";
+      $("cbFs").value = "ntfs";
       $("cbPart").selectedIndex = 1; $("cbTarget").selectedIndex = 1;
     } else {
       setFsOptions(false);
-      $("cbFs").value = "FAT32";
+      $("cbFs").value = "vfat";
       $("cbPart").selectedIndex = 0; $("cbTarget").selectedIndex = 0;
     }
     $("editLabel").value = sanitizeLabel(isoLabel || "NO_LABEL", fsKey());
-    setProgress(null, "READY");
+    setProgress(null, t("ready"));
   } catch (e) {
-    mbox(`Cannot use image:\n${e}`, ["OK"]);
-    setProgress(null, "READY");
+    mbox(t("cannot_use_img") + e, [t("ok")]);
+    setProgress(null, t("ready"));
   }
   syncEnabled();
 }
 function setFsOptions(windows) {
   const cb = $("cbFs");
-  const cur = cb.value.replace(/ \(Default\)$/, "");
-  const full = ["Large FAT32", "FAT32", "FAT16", "NTFS", "exFAT", "UDF", "ext2", "ext3", "ext4"];
-  const list = windows ? ["FAT32", "NTFS"] : full;
-  const def = windows ? "NTFS" : "FAT32";
+  const cur = cb.value;
+  const full = ["large", "vfat", "fat16", "ntfs", "exfat", "udf", "ext2", "ext3", "ext4"];
+  const list = windows ? ["vfat", "ntfs"] : full;
+  const def = windows ? "ntfs" : "vfat";
   cb.innerHTML = "";
-  list.forEach((t) => {
+  list.forEach((v) => {
     const o = document.createElement("option");
-    o.textContent = t === def ? t + " (Default)" : t;
-    o.value = t;
+    o.value = v;
+    o.textContent = v === def ? fmt(t("def_tpl"), t(FS_KEYS[v])) : t(FS_KEYS[v]);
     cb.appendChild(o);
   });
-  cb.value = list.includes(cur) ? cur : def;
+  cb.selectedIndex = Math.max(0, list.indexOf(list.includes(cur) ? cur : def));
   DD.sync(cb);
 }
 
@@ -320,15 +459,15 @@ async function armJobEvents() {
     if (id === jobId && jobKind === "create") {
       const jid = jobId; jobId = 0;
       clockStop();
-      setProgress(null, "READY");
+      setProgress(null, t("ready"));
       syncEnabled();
-      if (code === 0) { setProgress(100, "READY"); logLine("Done."); }
+      if (code === 0) { setProgress(100, t("ready")); logLine("Done."); }
       else {
         const why = (code === 126 || code === 127)
-          ? "Authorization was cancelled or pkexec is unavailable."
-          : (jobLastError || `The worker exited with code ${code}.`);
+          ? t("auth_cancel")
+          : (jobLastError || fmt(t("worker_exited"), code));
         logLine("Failed: " + why);
-        mbox(why, ["OK"]);
+        mbox(why, [t("ok")]);
       }
       void jid;
     } else if (id === dlJob && jobKind === "download") {
@@ -355,7 +494,7 @@ async function askWue() {
       if ($("wLocale").checked) { parts.push("locale"); extra.push("--locale", "en-US"); }
       if ($("wUserOn").checked) {
         const u = $("wUser").value.trim();
-        if (!u) { mbox("Please enter a user name.", ["OK"]); resolve(askWue()); return; }
+        if (!u) { mbox(t("enter_user"), [t("ok")]); resolve(askWue()); return; }
         parts.push("user=" + u);
       }
       resolve({ wue: parts.length ? parts.join(",") : "none", extra });
@@ -376,13 +515,13 @@ async function onStart() {
   if (bi === 1) mode = "dos";
   else if (bi === 0) mode = "format";
   else {
-    if (!isoPath) { mbox("Please select a disk or ISO image.", ["OK"]); return; }
+    if (!isoPath) { mbox(t("sel_img"), [t("ok")]); return; }
     if (isoWindows) mode = "windows";
     else if (!isoValid) mode = "dd";
     else if (isoHybrid) {
       const c = await mbox(
-        "The image you have selected is an 'ISOHybrid' image. This means it can be written either in ISO Image (file copy) mode or DD Image (disk image) mode.\nRufux recommends using ISO Image mode, so that you always have full access to the drive after writing it.\nHowever, if you encounter issues during boot, you can try writing this image again in DD Image mode.\n\nPlease select the mode that you want to use to write this image:",
-        ["Write in ISO Image mode (Recommended)", "Write in DD Image mode", "Cancel"]);
+        fmt(t("iso_msg"), "ISO Image", "DD Image", "ISO Image", "DD Image"),
+        [t("iso_btn"), t("dd_btn"), t("cancel")]);
       if (c === 0) mode = "extract";
       else if (c === 1) mode = "dd";
       else return;
@@ -394,10 +533,10 @@ async function onStart() {
     if (!w) return;
     wue = w.wue; extra = w.extra;
   }
-  const dev = $("cbDevice").value;
+  const dev = $("cbDevice").selectedOptions.length ? $("cbDevice").selectedOptions[0].text : "";
   const ok = await mbox(
-    `WARNING: ALL DATA ON DEVICE '${dev}' WILL BE DESTROYED.\nTo continue with this operation, click OK. To quit click CANCEL.`,
-    ["OK", "CANCEL"]);
+    fmt(t("destroy_msg"), dev),
+    [t("ok"), t("cancel_op")]);
   if (ok !== 0) return;
 
   const fs = fsKey();
@@ -420,7 +559,7 @@ async function onStart() {
   jobKind = "create";
   try {
     jobId = await invoke("start_create", { spec });
-  } catch (e) { mbox(`Cannot start:\n${e}`, ["OK"]); jobKind = ""; return; }
+  } catch (e) { mbox(t("cannot_start") + e, [t("ok")]); jobKind = ""; return; }
   setProgress(0, "%");
   clockStart();
   logLine(`Starting: ${mode} -> ${dst}`);
@@ -431,7 +570,7 @@ async function onStart() {
 async function onHash() {
   if (!isoPath) return;
   $("hashOverlay").classList.remove("hidden");
-  $("hashRows").innerHTML = '<div class="hash-wait">Computing…</div>';
+  $("hashRows").innerHTML = '<div class="hash-wait">' + t("computing") + '</div>';
   const rows = [];
   for (const a of [["MD5", "md5"], ["SHA-1", "sha1"], ["SHA-256", "sha256"], ["SHA-512", "sha512"]]) {
     try {
@@ -446,12 +585,13 @@ async function onHash() {
 let dlProducts = [];
 async function openDownload() {
   $("dlOverlay").classList.remove("hidden");
-  $("dlStatus").textContent = "Listing products…";
+  $("dlbar").classList.add("hidden");
+  $("dlStatus").textContent = t("dl_listing");
   try {
     dlProducts = await invoke("dl_products");
-  } catch (e) { $("dlStatus").textContent = "Download list failed: " + e; return; }
+  } catch (e) { $("dlStatus").textContent = t("dl_list_fail") + e; return; }
   fillEditions();
-  $("dlStatus").textContent = "Pick edition, language, then Download.";
+  $("dlStatus").textContent = t("dl_pick");
 }
 function fillEditions() {
   const ver = $("dlVer").value;
@@ -468,19 +608,20 @@ async function fillLangs() {
   const ver = $("dlVer").value;
   const cb = $("dlLang");
   cb.innerHTML = "";
-  $("dlStatus").textContent = "Listing languages…";
+  $("dlStatus").textContent = t("dl_langs");
   try {
     const langs = await invoke("dl_langs", { version: ver, edition: +$("dlEd").value || 0 });
     langs.forEach((l) => {
       const o = document.createElement("option"); o.value = l.id; o.textContent = l.display; cb.appendChild(o);
     });
     DD.sync(cb);
-    $("dlStatus").textContent = "Ready.";
-  } catch (e) { $("dlStatus").textContent = "Language list failed: " + e; }
+    $("dlStatus").textContent = t("dl_pick");
+  } catch (e) { $("dlStatus").textContent = t("dl_lang_fail") + e; }
 }
 async function startDl() {
   if (dlJob) return;
-  $("dlStatus").textContent = "Starting download…";
+  $("dlStatus").textContent = t("dl_starting");
+  $("dlbar").classList.remove("hidden");
   $("dlfill").style.width = "0%"; $("dltext").textContent = "";
   jobKind = "download";
   let outdir = "";
@@ -493,7 +634,7 @@ async function startDl() {
         outdir: outdir || (await dlDir()) || ".",
       },
     });
-  } catch (e) { $("dlStatus").textContent = "Cannot start: " + e; jobKind = ""; }
+  } catch (e) { $("dlStatus").textContent = t("cannot_start") + e; $("dlbar").classList.add("hidden"); jobKind = ""; }
 }
 async function dlDir() {
   try { return await invoke("download_dir"); } catch (e) { return ""; }
@@ -504,9 +645,10 @@ function dlLine(line) {
   if (line.startsWith("ISO: ")) {
     const p = line.slice(5).trim();
     lastDir("rufux.dlDir", p);
-    $("dlStatus").textContent = "Done: " + p;
+    $("dlStatus").textContent = t("dl_done") + p;
     loadImage(p);
     $("dlOverlay").classList.add("hidden");
+    $("dlbar").classList.add("hidden");
     return;
   }
   $("dlStatus").textContent = line;
@@ -514,7 +656,7 @@ function dlLine(line) {
 }
 function dlExit(code) {
   jobKind = "";
-  if (code !== 0) $("dlStatus").textContent = "Download failed (code " + code + ").";
+  if (code !== 0) $("dlStatus").textContent = fmt(t("dl_failed"), code);
 }
 
 /* ---------- wiring ---------- */
@@ -547,28 +689,28 @@ function wire() {
   $("btnSelect").onclick = () => (selectMode === 1 ? openDownload() : selectFile());
   $("btnSelectArrow").onclick = (e) => { e.stopPropagation(); $("selMenu").classList.toggle("hidden"); };
   document.addEventListener("click", () => $("selMenu").classList.add("hidden"));
-  $("mSelect").onclick = () => { selectMode = 0; $("btnSelect").textContent = "SELECT"; $("mSelect").classList.add("checked"); $("mDownload").classList.remove("checked"); };
-  $("mDownload").onclick = () => { selectMode = 1; $("btnSelect").textContent = "DOWNLOAD"; $("mDownload").classList.add("checked"); $("mSelect").classList.remove("checked"); };
+  $("mSelect").onclick = () => { selectMode = 0; syncSelectBtn(); $("mSelect").classList.add("checked"); $("mDownload").classList.remove("checked"); };
+  $("mDownload").onclick = () => { selectMode = 1; syncSelectBtn(); $("mDownload").classList.add("checked"); $("mSelect").classList.remove("checked"); };
   $("btnHash").onclick = onHash;
-  $("btnSave").onclick = () => mbox("Saving drive contents is not supported by the Linux backend yet.", ["OK"]);
+  $("btnSave").onclick = () => mbox(t("save_unsupported"), [t("ok")]);
   $("hashClose").onclick = () => $("hashOverlay").classList.add("hidden");
   $("btnStart").onclick = onStart;
   $("btnClose").onclick = async () => { try { await invoke("close_window"); } catch (e) { window.close(); } };
-  $("tbAbout").onclick = () => mbox("Rufux 2.1.0\nCreate bootable USB drives on Linux.\nA Linux port of Rufus by Pete Batard. License: GPLv3.\nhttps://github.com/Hultwl/Rufux", ["OK"]);
+  $("tbAbout").onclick = () => mbox(t("about_text"), [t("ok")]);
   $("tbLog").onclick = () => $("logOverlay").classList.remove("hidden");
-  $("tbSettings").onclick = () => mbox("Updates are handled by your package manager.", ["OK"]);
-  $("tbLang").onclick = () => mbox("English only in this build.", ["OK"]);
+  $("tbSettings").onclick = () => mbox(t("updates_pkg"), [t("ok")]);
+  $("tbLang").onclick = (e) => { e.stopPropagation(); buildLangMenu(); $("langMenu").classList.toggle("hidden"); };
+  document.addEventListener("click", () => $("langMenu").classList.add("hidden"));
   $("logClose").onclick = () => $("logOverlay").classList.add("hidden");
   $("logClear").onclick = () => { logLines.length = 0; $("logView").value = ""; };
   $("logSave").onclick = async () => {
     const p = await dlgSave({ defaultPath: "rufux.log" });
-    if (p) { try { await invoke("save_file", { path: p, content: logLines.join("\n") }); } catch (e) { mbox("Save failed: " + e, ["OK"]); } }
+    if (p) { try { await invoke("save_file", { path: p, content: logLines.join("\n") }); } catch (e) { mbox(t("save_failed") + e, [t("ok")]); } }
   };
   const adv = (tgl, body, what) => {
     $(tgl).onclick = () => {
-      const collapsed = $(body).classList.toggle("hidden");
-      $(tgl).querySelector(".glyph").textContent = collapsed ? "►" : "▼";
-      $(tgl).childNodes[1].textContent = ` ${collapsed ? "Show" : "Hide"} advanced ${what} properties`;
+      $(body).classList.toggle("hidden");
+      setToggle(tgl, body, what);
       fit();
     };
   };
@@ -591,6 +733,7 @@ function wire() {
   $("dlCancel").onclick = async () => {
     if (dlJob) { try { await invoke("kill_job", { id: dlJob }); } catch (e) { /* noop */ } }
     $("dlOverlay").classList.add("hidden");
+    $("dlbar").classList.add("hidden");
   };
 }
 
@@ -614,8 +757,10 @@ async function boot() {
       });
     } catch (e) { logLine("Drag-drop unavailable: " + e); }
     setFsOptions(false);
+    buildLangMenu();
+    applyI18n();
   } catch (e) {
-    try { mbox("Startup failed: " + e, ["OK"]); } catch (e2) { /* noop */ }
+    try { mbox(t("startup_failed") + e, [t("ok")]); } catch (e2) { /* noop */ }
   }
 }
 document.addEventListener("DOMContentLoaded", boot);
