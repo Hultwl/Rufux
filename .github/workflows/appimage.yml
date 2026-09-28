@@ -11,7 +11,10 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    # Oldest supported Ubuntu LTS on purpose: the AppImage bundles the
+    # build host's libc, so a newer host (24.04/glibc 2.39) refuses to
+    # run on older distros. 22.04/glibc 2.35 is the compatibility floor.
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v7
 
