@@ -97,9 +97,10 @@ jobs:
           for t in mkfs.vfat mkfs.ntfs ntfsfix mkfs.exfat mkfs.ext4 mkfs.udf sfdisk partprobe bsdtar wimlib-imagex hivexsh syslinux udisksctl curl; do
             deploy_tool "$t" "$t"
           done
-          # 7z is a wrapper script on Debian/Ubuntu (and Arch): deploy
-          # the real backend behind it.
-          deploy_tool 7z 7zz 7za 7zr /usr/lib/7zip/7z
+          # 7z is a wrapper script on some distros (Arch, Ubuntu 24.04's
+          # /usr/bin/7z): prefer the real backend. deploy_tool requires
+          # ELF magic, so listing bare 7z first is safe anywhere.
+          deploy_tool 7z 7zz 7za 7zr 7z /usr/lib/7zip/7z /usr/lib/p7zip/7z /usr/lib/p7zip/7za
           # Ubuntu's 7z is a thin binary that loads its archive formats from 7z.so
           # next to it. Without the plugin `7z i` still runs but every archive fails
           # with "Can't open as archive", and this copy shadows the system's 7z.
