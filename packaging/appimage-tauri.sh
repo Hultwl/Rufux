@@ -58,54 +58,20 @@ echo "== linuxdeploy =="
 [ -x linuxdeploy-x86_64.AppImage ] || wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
 chmod +x linuxdeploy-x86_64.AppImage
 export APPIMAGE_EXTRACT_AND_RUN=1
+# WebKitGTK ships whole (self-containment): helpers are spawned by baked
+# absolute path, so copy them in for the LD_PRELOAD exec shim.
+WKDIR="$(dirname "$(find /usr/lib -name WebKitWebProcess -path "*webkit*" 2>/dev/null | head -1)")"
+[ -n "$WKDIR" ] || { echo "WebKit helpers not found"; exit 1; }
+mkdir -p AppDir/usr/lib/webkit2gtk-4.1
+cp "$WKDIR"/WebKitWebProcess "$WKDIR"/WebKitNetworkProcess AppDir/usr/lib/webkit2gtk-4.1/
+[ -f "$WKDIR/WebKitGPUProcess" ] && cp "$WKDIR"/WebKitGPUProcess AppDir/usr/lib/webkit2gtk-4.1/ || true
+cp -r "$WKDIR"/injected-bundle AppDir/usr/lib/webkit2gtk-4.1/
 ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
   --appdir AppDir \
   -e AppDir/usr/bin/rufux \
+  -e AppDir/usr/bin/rufux-gui \
   $(tr '\n' ' ' < "$ROOT/.rufux-tools") \
-  --exclude-library libwebkit2gtk-4.1.so.0 \
-  --exclude-library libjavascriptcoregtk-4.1.so.0 \
-  --exclude-library libsoup-3.0.so.0 \
-  --exclude-library libgtk-3.so.0 \
-  --exclude-library libgdk-3.so.0 \
-  --exclude-library libavif.so.16 \
-  --exclude-library libglycin-2.so.0 \
-  --exclude-library libaom.so.3 \
-  --exclude-library libdav1d.so.7 \
-  --exclude-library librav1e.so.0.8 \
-  --exclude-library libSvtAv1Enc.so.4 \
-  --exclude-library libjxl.so.0.12 \
-  --exclude-library libjxl_cms.so.0.12 \
-  --exclude-library libsharpyuv.so.0 \
-  --exclude-library libyuv.so \
-  --exclude-library libgstreamer-1.0.so.0 \
-  --exclude-library libgstallocators-1.0.so.0 \
-  --exclude-library libgstapp-1.0.so.0 \
-  --exclude-library libgstaudio-1.0.so.0 \
-  --exclude-library libgstbase-1.0.so.0 \
-  --exclude-library libgstfft-1.0.so.0 \
-  --exclude-library libgstgl-1.0.so.0 \
-  --exclude-library libgstpbutils-1.0.so.0 \
-  --exclude-library libgsttag-1.0.so.0 \
-  --exclude-library libgstvideo-1.0.so.0 \
-  --exclude-library libhyphen.so.0 \
-  --exclude-library libxslt.so.1 \
-  --exclude-library libenchant-2.so.2 \
-  --exclude-library libmanette-0.2.so.0 \
-  --exclude-library libsecret-1.so.0 \
   -d AppDir/usr/share/applications/io.github.hultwl.rufux.desktop \
   -i AppDir/usr/share/icons/hicolor/128x128/apps/io.github.hultwl.rufux.png \
   --output appimage
-ls -la ./*.AppImage
-
-# linuxdeploy stamps $ORIGIN/../lib RUNPATH on everything it touches.
-# The GUI must resolve 100% to the host: strip, verify, repack.
-[ -x appimagetool-x86_64.AppImage ] || wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
-chmod +x appimagetool-x86_64.AppImage
-rm -rf squashfs-root
-./Rufux-x86_64.AppImage --appimage-extract >/dev/null
-patchelf --remove-rpath squashfs-root/usr/bin/rufux-gui
-readelf -d squashfs-root/usr/bin/rufux-gui | grep -E "RPATH|RUNPATH" && { echo "rpath survives"; exit 1; } || true
-rm -f Rufux-x86_64.AppImage
-ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run squashfs-root Rufux-x86_64.AppImage
-rm -rf squashfs-root
 ls -la ./*.AppImage

@@ -86,6 +86,14 @@ target_link_directories(rufux PRIVATE ${CRYPTO_LIBRARY_DIRS})
 target_link_libraries(rufux PRIVATE ${CRYPTO_LIBRARIES})
 
 install(TARGETS rufux DESTINATION bin)
+
+# LD_PRELOAD shim that redirects WebKitGTK's baked-in helper paths into
+# the AppImage (see src/shim/webkit_shim.c). 5 KB, harmless on plain
+# installs where it is never preloaded.
+add_library(rufux-webkit-shim MODULE src/shim/webkit_shim.c)
+set_target_properties(rufux-webkit-shim PROPERTIES PREFIX "")
+target_link_libraries(rufux-webkit-shim PRIVATE dl)
+install(TARGETS rufux-webkit-shim DESTINATION lib)
 install(FILES doc/rufux.1 DESTINATION share/man/man1)
 install(FILES res/linux/io.github.hultwl.rufux.desktop DESTINATION share/applications)
 install(FILES res/linux/io.github.hultwl.rufux.policy DESTINATION share/polkit-1/actions)
