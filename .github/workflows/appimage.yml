@@ -76,9 +76,10 @@ jobs:
           # backends like p7zip's codec dir); 7zz is one static file
           # that opens ISOs on any host, and deploy_tool picks it first.
           mkdir -p "$GITHUB_WORKSPACE/7zzbin"
-          wget -q -O /tmp/7z.tar.xz https://www.7-zip.org/a/7z2409-linux-x64.tar.xz
+          wget -q -O /tmp/7z.tar.xz https://www.7-zip.org/a/7z2301-linux-x64.tar.xz
           tar -xJf /tmp/7z.tar.xz -C "$GITHUB_WORKSPACE/7zzbin" 7zz
           chmod +x "$GITHUB_WORKSPACE/7zzbin/7zz"
+          "$GITHUB_WORKSPACE/7zzbin/7zz" i | head -3
           # Deploy one tool: resolve symlinks (mkfs.vfat -> mkfs.fat),
           # require ELF (wrapper scripts killed two CI runs already),
           # and re-link the name Rufux looks up.
