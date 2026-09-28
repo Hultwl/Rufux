@@ -150,6 +150,12 @@ jobs:
           cp "$WKDIR"/WebKitWebProcess "$WKDIR"/WebKitNetworkProcess AppDir/usr/lib/webkit2gtk-4.1/
           [ -f "$WKDIR/WebKitGPUProcess" ] && cp "$WKDIR"/WebKitGPUProcess AppDir/usr/lib/webkit2gtk-4.1/ || true
           cp -r "$WKDIR"/injected-bundle AppDir/usr/lib/webkit2gtk-4.1/
+          # The helpers must resolve the BUNDLED libraries even though
+          # WebKit scrubs LD_LIBRARY_PATH when spawning them: stamp a
+          # relative RUNPATH on the copies (helpers live two levels
+          # below AppDir/usr/lib).
+          patchelf --set-rpath '$ORIGIN/../..' AppDir/usr/lib/webkit2gtk-4.1/WebKitWebProcess AppDir/usr/lib/webkit2gtk-4.1/WebKitNetworkProcess
+          [ -f AppDir/usr/lib/webkit2gtk-4.1/WebKitGPUProcess ] && patchelf --set-rpath '$ORIGIN/../..' AppDir/usr/lib/webkit2gtk-4.1/WebKitGPUProcess || true
           ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
             --appdir AppDir \
             -e AppDir/usr/bin/rufux \
@@ -172,6 +178,7 @@ jobs:
           for h in WebKitWebProcess WebKitNetworkProcess; do
             [ -x "AppDir/usr/lib/webkit2gtk-4.1/$h" ] || { echo "helper missing: $h"; exit 1; }
           done
+          readelf -d AppDir/usr/lib/webkit2gtk-4.1/WebKitWebProcess | grep -q "RUNPATH.*ORIGIN" || { echo "helper RUNPATH missing"; exit 1; }
           [ -f AppDir/usr/lib/webkit2gtk-4.1/injected-bundle/libwebkit2gtkinjectedbundle.so ] || { echo "injected bundle missing"; exit 1; }
           # ...and everything must resolve against the bundle+host libc.
           missing="$(find AppDir/usr/bin AppDir/usr/lib -type f -executable 2>/dev/null | while read -r f; do ldd "$f" 2>/dev/null; done | grep 'not found' || true)"

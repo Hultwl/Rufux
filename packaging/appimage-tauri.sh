@@ -66,6 +66,8 @@ mkdir -p AppDir/usr/lib/webkit2gtk-4.1
 cp "$WKDIR"/WebKitWebProcess "$WKDIR"/WebKitNetworkProcess AppDir/usr/lib/webkit2gtk-4.1/
 [ -f "$WKDIR/WebKitGPUProcess" ] && cp "$WKDIR"/WebKitGPUProcess AppDir/usr/lib/webkit2gtk-4.1/ || true
 cp -r "$WKDIR"/injected-bundle AppDir/usr/lib/webkit2gtk-4.1/
+patchelf --set-rpath '$ORIGIN/../..' AppDir/usr/lib/webkit2gtk-4.1/WebKitWebProcess AppDir/usr/lib/webkit2gtk-4.1/WebKitNetworkProcess
+[ -f AppDir/usr/lib/webkit2gtk-4.1/WebKitGPUProcess ] && patchelf --set-rpath '$ORIGIN/../..' AppDir/usr/lib/webkit2gtk-4.1/WebKitGPUProcess || true
 ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
   --appdir AppDir \
   -e AppDir/usr/bin/rufux \
