@@ -44,7 +44,7 @@ deploy_tool() {
 for t in mkfs.vfat mkfs.ntfs ntfsfix mkfs.exfat mkfs.ext4 mkfs.udf sfdisk partprobe bsdtar wimlib-imagex hivexsh syslinux udisksctl curl; do
   deploy_tool "$t" "$t"
 done
-deploy_tool 7z 7zz 7za 7zr /usr/lib/7zip/7z
+deploy_tool 7z 7zz 7za 7zr 7z /usr/lib/7zip/7z /usr/lib/p7zip/7z /usr/lib/p7zip/7za
 [ -f /usr/lib/7zip/7z.so ] && cp /usr/lib/7zip/7z.so AppDir/usr/bin/7z.so
 for t in smartctl qemu-img grub-mkimage grub-bios-setup; do
   deploy_tool "$t" "$t"
