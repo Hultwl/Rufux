@@ -22,7 +22,7 @@ removed; their sources survive only in git history.
 | Formatting (VDS, `FormatEx`) | `mkfs.vfat` (FAT32/FAT16), `mkfs.ntfs`, `mkfs.exfat`, `mkfs.ext4` (ext2/3/4 by `-t`), `mkudffs` |
 | Partitioning (`IOCTL_DISK_*`) | `sfdisk` scripts |
 | Raw disk access | `open()` with `O_EXCL`, `fsync`, `BLKRRPART` |
-| Dialogs | WebKitGTK bundled in the AppImage (helpers + exec shim); system `webkit2gtk-4.1` for native packages |
+| Dialogs | system WebKitGTK through Tauri (host dependency, not bundled) |
 | Administrator rights | `pkexec` for the worker, the window stays unprivileged |
 | Mounting | `udisksctl` |
 

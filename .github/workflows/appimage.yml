@@ -137,43 +137,62 @@ jobs:
           # GitHub runners have no FUSE: let linuxdeploy run its plugin AppImage extracted.
           APPIMAGE_EXTRACT_AND_RUN: 1
         run: |
-          # WebKitGTK is bundled whole (AppImageHub requires
-          # self-containment: no host webkit allowed). linuxdeploy pulls
-          # the libraries via ldd; the helper executables below are
-          # spawned by absolute baked path, so they are copied by hand
-          # and reached through the LD_PRELOAD exec shim (the backend
-          # stub preloads it; see src/shim/webkit_shim.c).
-          WKDIR="$(dirname "$(find /usr/lib -name WebKitWebProcess -path "*webkit*" 2>/dev/null | head -1)")"
-          [ -n "$WKDIR" ] || { echo "WebKit helpers not found"; exit 1; }
-          echo "WebKit helpers in: $WKDIR"
-          mkdir -p AppDir/usr/lib/webkit2gtk-4.1
-          cp "$WKDIR"/WebKitWebProcess "$WKDIR"/WebKitNetworkProcess AppDir/usr/lib/webkit2gtk-4.1/
-          [ -f "$WKDIR/WebKitGPUProcess" ] && cp "$WKDIR"/WebKitGPUProcess AppDir/usr/lib/webkit2gtk-4.1/ || true
-          cp -r "$WKDIR"/injected-bundle AppDir/usr/lib/webkit2gtk-4.1/
-          # The helpers must resolve the BUNDLED libraries even though
-          # WebKit scrubs LD_LIBRARY_PATH when spawning them: stamp a
-          # relative RUNPATH on the copies. Helpers sit directly under
-          # AppDir/usr/lib, so $ORIGIN/.. IS AppDir/usr/lib.
-          patchelf --set-rpath '$ORIGIN/..' AppDir/usr/lib/webkit2gtk-4.1/WebKitWebProcess AppDir/usr/lib/webkit2gtk-4.1/WebKitNetworkProcess
-          [ -f AppDir/usr/lib/webkit2gtk-4.1/WebKitGPUProcess ] && patchelf --set-rpath '$ORIGIN/..' AppDir/usr/lib/webkit2gtk-4.1/WebKitGPUProcess || true
+          # No toolkit plugin: the backend is CLI-only and the Tauri GUI
+          # renders in the host's WebKitGTK, which stays a host dependency
+          # (bundling it would add ~150 MB). Exclude it and its stack
+          # explicitly so linuxdeploy doesn't drag it in via ldd.
           ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run \
             --appdir AppDir \
             -e AppDir/usr/bin/rufux \
             -e AppDir/usr/bin/rufux-gui \
             $(tr '\n' ' ' < "$GITHUB_WORKSPACE/.rufux-tools") \
+            --exclude-library libwebkit2gtk-4.1.so.0 \
+            --exclude-library libjavascriptcoregtk-4.1.so.0 \
+            --exclude-library libsoup-3.0.so.0 \
+            --exclude-library libgtk-3.so.0 \
+            --exclude-library libgdk-3.so.0 \
+            --exclude-library libavif.so.16 \
+            --exclude-library libglycin-2.so.0 \
+            --exclude-library libaom.so.3 \
+            --exclude-library libdav1d.so.7 \
+            --exclude-library librav1e.so.0.8 \
+            --exclude-library libSvtAv1Enc.so.4 \
+            --exclude-library libjxl.so.0.12 \
+            --exclude-library libjxl_cms.so.0.12 \
+            --exclude-library libsharpyuv.so.0 \
+            --exclude-library libyuv.so \
+            --exclude-library libgstreamer-1.0.so.0 \
+            --exclude-library libgstallocators-1.0.so.0 \
+            --exclude-library libgstapp-1.0.so.0 \
+            --exclude-library libgstaudio-1.0.so.0 \
+            --exclude-library libgstbase-1.0.so.0 \
+            --exclude-library libgstfft-1.0.so.0 \
+            --exclude-library libgstgl-1.0.so.0 \
+            --exclude-library libgstpbutils-1.0.so.0 \
+            --exclude-library libgsttag-1.0.so.0 \
+            --exclude-library libgstvideo-1.0.so.0 \
+            --exclude-library libhyphen.so.0 \
+            --exclude-library libxslt.so.1 \
+            --exclude-library libenchant-2.so.2 \
+            --exclude-library libmanette-0.2.so.0 \
+            --exclude-library libsecret-1.so.0 \
             -d AppDir/usr/share/applications/io.github.hultwl.rufux.desktop \
             -i AppDir/usr/share/icons/hicolor/128x128/apps/io.github.hultwl.rufux.png \
             --output appimage
           ls -la ./*.AppImage
 
-      - name: Repack for size
-        # linuxdeploy already emits zstd, but at default level and 128K
-        # blocks. Manual mksquashfs with level 22 + 1M blocks squeezes
-        # the big binaries (webkit/JSC/ICU) noticeably harder. Runtime
-        # is the stock type-2 one, so mounting is unchanged.
+      - name: Strip the GUI loader path and repack
+        # linuxdeploy stamps $ORIGIN/../lib RUNPATH on every binary it
+        # touches, including rufux-gui - which must resolve 100% to the
+        # host (the backend stub scrubs the bundle loader path first;
+        # see gui_stub.c).
+        # Extract, strip, verify, repack by hand: manual mksquashfs
+        # with zstd-22/1M blocks beats appimagetool defaults (~7%).
         run: |
           sudo apt-get install -y -qq squashfs-tools
           ./Rufux-*.AppImage --appimage-extract >/dev/null
+          patchelf --remove-rpath squashfs-root/usr/bin/rufux-gui
+          readelf -d squashfs-root/usr/bin/rufux-gui | grep -E "RPATH|RUNPATH" && { echo "rpath survives"; exit 1; } || true
           rm -f Rufux-x86_64.AppImage
           wget -q https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64
           mksquashfs squashfs-root fs.squashfs -root-owned -noappend \
@@ -186,21 +205,20 @@ jobs:
       - name: Verify the bundle
         run: |
           [ -x AppDir/usr/bin/rufux-gui ] || { echo "rufux-gui missing"; exit 1; }
-          [ -f AppDir/usr/lib/rufux-webkit-shim.so ] || { echo "exec shim missing"; exit 1; }
-          # Self-containment (AppImageHub policy): the WebKit stack must
-          # be INSIDE the bundle, helpers included - nothing may come
-          # from the host except libc-class libraries and the udisks2
-          # daemon (mounts, deliberately host-side).
-          ls AppDir/usr/lib | grep -qi webkit || { echo "webkit not bundled"; exit 1; }
-          for h in WebKitWebProcess WebKitNetworkProcess; do
-            [ -x "AppDir/usr/lib/webkit2gtk-4.1/$h" ] || { echo "helper missing: $h"; exit 1; }
-          done
-          readelf -d AppDir/usr/lib/webkit2gtk-4.1/WebKitWebProcess | grep -q "RUNPATH.*ORIGIN" || { echo "helper RUNPATH missing"; exit 1; }
-          [ -f AppDir/usr/lib/webkit2gtk-4.1/injected-bundle/libwebkit2gtkinjectedbundle.so ] || { echo "injected bundle missing"; exit 1; }
-          # ...and everything must resolve against the bundle+host libc.
+          [ -x AppDir/usr/bin/rufux-gui ] || { echo "rufux-gui missing (2)"; exit 1; }
+          # The GUI must resolve 100% to the host (no RUNPATH into the
+          # bundle): check the packed tree, which is what ships.
+          if readelf -d squashfs-root/usr/bin/rufux-gui | grep -qE "RPATH|RUNPATH"; then
+            echo "rufux-gui carries a bundle loader path"; exit 1
+          fi
+          # WebKitGTK must NOT be bundled (host dependency), ...
+          if ls AppDir/usr/lib | grep -qiE "webkit|avif|glycin|aom|dav1d|rav1e|svtav1|jxl|gst|hyphen|xslt|enchant|manette|secret"; then echo "webkit stack leaked into bundle"; exit 1; fi
+          # ...but everything else must resolve against the bundle+host.
           missing="$(find AppDir/usr/bin AppDir/usr/lib -type f -executable 2>/dev/null | while read -r f; do ldd "$f" 2>/dev/null; done | grep 'not found' || true)"
-          [ -z "$missing" ] || { echo "unresolved libraries:$missing"; exit 1; }
-          echo "bundle OK"
+          # webkit/soup/gtk3 come from the host by design; anything else is a bug.
+          other="$(echo "$missing" | grep -v -i -e webkit -e javascriptcore -e 'libsoup' -e 'libgtk-3' -e 'libgdk-3' || true)"
+          [ -z "$other" ] || { echo "unresolved libraries:$other"; exit 1; }
+          echo "bundle OK (host provides: $(echo "$missing" | awk '{print $1}' | sort -u | tr '\n' ' '))"
 
       - name: Verify bundled tools
         # Every helper must have landed in AppDir/usr/bin with

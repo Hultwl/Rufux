@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.2.1
+
+- Fixed: pressing START always failed with `missing field 'persist_mb'`.
+  The window sends camelCase JSON but the backend struct had no case
+  mapping. No write ever went through the 2.x window; all writes do now.
+- Packaging is back to system WebKitGTK (host dependency, ~34 MB image)
+  instead of the bundled 81 MB one. The catalog listing is dropped with
+  it: their sandbox has no WebKit to fall back on.
+
 ## 2.2
 
 - Window: 34 interface languages from Rufus's own translations, Arabic

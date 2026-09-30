@@ -263,6 +263,7 @@ async fn probe_iso(path: String) -> Result<IsoInfo, String> {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct CreateSpec {
   src: String,
   dst: String,
