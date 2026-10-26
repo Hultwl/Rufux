@@ -1,14 +1,18 @@
 #ifndef RUFUX_BIOSBOOT_H
 #define RUFUX_BIOSBOOT_H
-// Legacy BIOS boot for Windows installation media on an MBR drive.
+// Legacy BIOS boot for Windows installation media, on MBR and on GPT.
 //
 // Windows boots on BIOS through boot code in the partition that loads bootmgr.
 // For FAT32 that is a stock boot record, but for NTFS it is Microsoft's own
 // loader in sectors 1-15 of $Boot, which mkfs.ntfs does not write. Instead of
-// either, the drive gets GRUB 2 (i386-pc) in the gap between the MBR and the
-// first partition, with a two-line embedded script that finds bootmgr on any
-// partition and starts it the way NTLDR would. It is independent of the file
-// system (FAT32, NTFS, exFAT) and leaves the Windows files untouched.
+// either, the drive gets GRUB 2 (i386-pc) with a two-line embedded script that
+// finds bootmgr on any partition and starts it the way NTLDR would. It is
+// independent of the file system (FAT32, NTFS, exFAT) and leaves the Windows
+// files untouched.
+//
+// Where core.img lives depends on the table: on MBR in the gap between the
+// boot sector and the first partition; on GPT, which has no such gap, in the
+// 1 MiB "BIOS boot" partition that partition.c reserves for it.
 typedef void (*RufuxBiosLog)(const char *, void *);
 
 // 1 when the GRUB tools and i386-pc modules needed are installed.

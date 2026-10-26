@@ -46,7 +46,9 @@ purpose, so it looks like Rufus everywhere instead of almost-Rufus.
   Rufus has: skip the RAM/Secure Boot/TPM checks, skip the online account,
   create a local account, copy your regional options, skip the privacy
   questions, no BitLocker auto-encryption, and the QoL tweaks.
-  MBR sticks (FAT32 or NTFS) also boot on legacy BIOS machines.
+  Both schemes also boot on legacy BIOS machines: MBR through GRUB 2 in the
+  gap before the first partition, GPT through a 1 MiB BIOS boot partition at
+  the end of the table.
 - **Download Windows 11 or 10.** The DOWNLOAD button next to SELECT asks
   Microsoft's own download service for the official ISO (version, edition,
   language, architecture), saves it, and selects it. It works the way Rufus's
@@ -68,9 +70,6 @@ purpose, so it looks like Rufus everywhere instead of almost-Rufus.
 
 ## Limits
 
-- Legacy BIOS boot for Windows media needs the MBR scheme. GPT drives boot on
-  UEFI machines only. (It uses GRUB 2 in the gap before the first partition to
-  start `bootmgr`, because Linux cannot write Windows' own NTFS loader.)
 - The Windows download depends on a Microsoft web service I do not control. The
   Windows edition list comes from Fido and needs updating when Microsoft
   publishes a new release.
@@ -105,9 +104,10 @@ window renders in the host's WebKitGTK, which is a run-time requirement
 (never bundled). At run time it uses
 `dosfstools`, `ntfs-3g`, `exfatprogs`, `e2fsprogs`, `util-linux`, `udisks2`,
 `polkit` and `p7zip`. For the Windows 11 checks bypass and FAT32 with a large
-`install.wim` you also want `wimlib` and `hivex`. Package names per
-distribution are in [packaging/README.md](packaging/README.md). Some tests skip
-themselves when a tool or root access is missing.
+`install.wim` you also want `wimlib` and `hivex`; for legacy BIOS boot of
+Windows media, GRUB's i386-pc tools and modules (`grub-pc-bin`). Package names
+per distribution are in [packaging/README.md](packaging/README.md). Some tests
+skip themselves when a tool or root access is missing.
 
 ## Command line
 

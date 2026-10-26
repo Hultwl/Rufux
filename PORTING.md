@@ -38,6 +38,13 @@ partition; Rufus notes that Setup fails on a disk with two of them. FAT32
 layout: one partition, and `install.wim` over 4 GiB is split into
 `install.swm` parts with `wimlib-imagex split`.
 
+Both schemes then get legacy BIOS boot code, which Rufus does not do on GPT.
+A GPT disk has no MBR gap, so the table carries one extra 1 MiB partition at
+the end typed "BIOS boot" (`21686148-6449-6E6F-744E-656564454649`) for GRUB's
+`core.img`; on MBR that code goes in the gap before the first partition. It is
+GRUB rather than Windows' own NTFS loader because Microsoft's loader lives in
+sectors 1-15 of `$Boot`, which `mkfs.ntfs` does not write.
+
 GPT partitions must use the real Microsoft basic data type,
 `EBD0A0A2-B9E5-4433-87C0-68B6B72699C7`. Windows ignores partitions of a type it
 does not know and shows no volume for the drive. Rufux checks the table after
@@ -58,10 +65,10 @@ answer file with a `windowsPE` pass. Other options go to
 | Dynamic VHD, VHDX, VMDK, QCOW2, VDI | Works | `qemu-img convert` onto the target; images with backing files or foreign extents are refused; consistency-checked first |
 | Drive health | Works | `smartctl`; only a failing verdict blocks a write |
 | Revoked UEFI bootloaders | Works | DBX hashes and certificates, SBAT, boot manager SVN (`bootcheck.c`, from `hash.c`); the `pe256ssp` list Rufus downloads is not used |
-| Legacy BIOS boot, Windows media | Works (MBR) | GRUB 2 in the MBR gap runs `ntldr /bootmgr` on FAT32/NTFS; GPT stays UEFI-only |
+| Legacy BIOS boot, Windows media | Works (MBR and GPT) | GRUB 2 runs `ntldr /bootmgr` on FAT32/NTFS: from the MBR gap on an MBR drive, from a 1 MiB BIOS boot partition on a GPT one |
 | Bad-block scan | Works | Read-only by default, `--write-patterns` writes test patterns |
 | FreeDOS | Works | DOS boot records |
-| Windows install media | Works | UEFI boot; see the limits in the README |
+| Windows install media | Works | UEFI boot, plus legacy BIOS boot (see the row above); the limits are in the README |
 | ReFS | No | No Linux formatter exists |
 | Windows ISO download | Works | The protocol of Fido (session, SKU lookup, link request). Microsoft documents none of it, so it can break; tested here against a stand-in server only |
 | Windows To Go | No | |

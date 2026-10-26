@@ -1,7 +1,9 @@
 #!/bin/bash
-# Legacy BIOS boot of Windows installation media on an MBR drive, proven by booting
-# it: a stand-in bootmgr prints BOOTMGR-OK on the serial port, so the whole chain
-# (MBR -> GRUB in the gap -> find bootmgr -> start it) has to work in QEMU/SeaBIOS.
+# Legacy BIOS boot of Windows installation media, proven by booting it: a
+# stand-in bootmgr prints BOOTMGR-OK on the serial port, so the whole chain
+# (boot sector -> GRUB -> find bootmgr -> start it) has to work in QEMU/SeaBIOS.
+# Runs for the MBR scheme (GRUB in the gap before partition 1) and for GPT
+# (GRUB in the 1 MiB BIOS boot partition).
 # Needs root, loop devices, qemu-system-x86_64, the GRUB i386-pc tools and ntfs-3g.
 # Usage: test_bios_boot.sh /path/to/rufux      (exit 77 = skipped)
 R=$1; HERE=$(cd "$(dirname "$0")" && pwd)
@@ -49,11 +51,19 @@ L=$(losetup -f --show -P $T/d.img); partprobe $L; sleep 1; mount -t ntfs-3g ${L}
 [ -f $T/m/bootmgr ] && cmp -s $T/m/bootmgr $T/bootmgr || bad "dos: bootmgr on the drive differs from the ISO's"
 umount $T/m; ntfsfix -n ${L}p1 >/dev/null 2>&1 || bad "dos: NTFS reports problems"; losetup -d $L
 
-# 2. GPT: no BIOS boot code, and it says so
-burn gpt || bad "gpt burn: $(tail -3 $T/log)"
-grep -q "UEFI machines only" $T/log || bad "gpt: log should say UEFI only"
-[ "$(dd if=$T/d.img bs=1 count=440 2>/dev/null | tr -d '\0' | wc -c)" = 0 ] || bad "gpt: boot code written to the protective MBR"
-echo "ok gpt-untouched"
+# 2. GPT + NTFS: GRUB lives in the BIOS boot partition, so this boots on BIOS too
+burn gpt || { bad "gpt burn: $(tail -3 $T/log)"; }
+grep -q "boots on both UEFI and legacy BIOS" $T/log || bad "gpt: log does not say BIOS boot works: $(grep -E 'BIOS|WARNING' $T/log)"
+echo "$tab" | grep -q 'type=21686148-6449-6E6F-744E-656564454649' || bad "gpt: no BIOS boot partition: $(echo "$tab" | tail -3)"
+echo "$tab" | grep -q 'size= *2048, .*name="BIOS boot"' || bad "gpt: BIOS boot partition is not 1 MiB"
+echo "$tab" | grep -q 'type=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7, uuid=[^,]*, name="Windows"' || bad "gpt: data partition lost its name"
+[ "$(dd if=$T/d.img bs=1 count=1 2>/dev/null | od -An -tx1 | tr -d ' ')" = eb ] || bad "gpt: no boot code in the protective MBR"
+sfdisk -l $T/d.img 2>/dev/null | grep -q 'Disklabel type: gpt' || bad "gpt: the table no longer parses as GPT"
+boots $T/d.img && echo "ok bios-boot-gpt-ntfs" || bad "gpt: BIOS boot did not reach bootmgr (serial: $(cat $T/serial 2>/dev/null))"
+# The scratch directory must not survive on the data partition here either.
+L=$(losetup -f --show -P $T/d.img); partprobe $L; sleep 1; mount -t ntfs-3g ${L}p1 $T/m
+[ -e $T/m/.rufux-grub ] && bad "gpt: .rufux-grub left on the drive"
+umount $T/m; losetup -d $L
 
 # 3. GRUB tools unavailable: the burn still succeeds, with a clear warning
 RUFUX_GRUB_DIR=/nonexistent burn dos || bad "no-grub burn failed: $(tail -3 $T/log)"
@@ -67,10 +77,23 @@ if grep -qw vfat /proc/filesystems || modprobe vfat 2>/dev/null; then
   burn dos || bad "fat32 burn: $(tail -3 $T/log)"
   grep -q "boots on both UEFI and legacy BIOS" $T/log || bad "fat32: log does not say BIOS boot works: $(grep -E 'BIOS|WARNING' $T/log)"
   boots $T/d.img && echo "ok bios-boot-fat32" || bad "fat32: BIOS boot did not reach bootmgr (serial: $(cat $T/serial 2>/dev/null))"
+  # GPT with a single data partition: the BIOS boot partition trails it
+  burn gpt || bad "fat32 gpt burn: $(tail -3 $T/log)"
+  grep -q "boots on both UEFI and legacy BIOS" $T/log || bad "fat32 gpt: log does not say BIOS boot works"
+  echo "$tab" | grep -q 'size= *2048, .*name="BIOS boot"' || bad "fat32 gpt: no 1 MiB BIOS boot partition"
+  echo "$tab" | grep -q 'type=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7' || bad "fat32 gpt: data partition is not basic data"
+  boots $T/d.img && echo "ok bios-boot-fat32-gpt" || bad "fat32 gpt: BIOS boot did not reach bootmgr (serial: $(cat $T/serial 2>/dev/null))"
   FS=ntfs
 else
   echo "note: this kernel cannot mount vfat, FAT32 case not run"
 fi
+
+# 3c. --scheme mbr must behave exactly like dos (it used to be read as GPT:
+# gptmbr.bin over an MBR table, and no legacy BIOS boot code at all)
+burn mbr || bad "mbr alias burn: $(tail -3 $T/log)"
+echo "$tab" | grep -q "label: dos" || bad "mbr alias: the table is not dos: $(echo "$tab" | head -2)"
+grep -q "boots on both UEFI and legacy BIOS" $T/log || bad "mbr alias: no BIOS boot code installed"
+echo "ok mbr-alias"
 
 # 4. dry run describes the step and writes nothing
 truncate -s 1G $T/d.img; L=$(losetup -f --show -P $T/d.img)

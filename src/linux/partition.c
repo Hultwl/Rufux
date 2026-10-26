@@ -14,6 +14,11 @@
 #include <sys/wait.h>
 #include <linux/fs.h>
 
+// Partition type GRUB 2 embeds core.img in on GPT (the "BIOS boot" partition).
+// There is no gap between the MBR and the first partition on a GPT disk to use
+// instead, which is why a GPT drive that must start on legacy BIOS carries one.
+#define BIOS_BOOT_GUID "21686148-6449-6E6F-744E-656564454649"
+
 // Size of a block device or image file in bytes (0 on failure).
 static unsigned long long target_bytes(const char *path) {
   struct stat st;
@@ -108,6 +113,7 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
     snprintf(err, cap, "layout must be single|esp+main|main+uefintfs");
     return -1;
   }
+  int bios_part = o->bios_boot && !strcmp(scheme, "gpt");
   if (!o->dry_run && !o->yes) {
     snprintf(err, cap, "refusing real partition without --yes");
     return -1;
@@ -124,6 +130,8 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
   // MBR type follows the filesystem: BIOS boots FAT/NTFS partitions,
   // never type 83 (Linux). gpt layouts need no boot flag (UEFI ignores
   // it); every dos/MBR data partition gets flagged bootable.
+  // A GPT drive that also has to start on legacy BIOS carries one extra
+  // 1 MiB partition at the end (o->bios_boot), typed BIOS boot.
   const char *mbr_type = "0c";
   if (o->fs_main) {
     if (!strcmp(o->fs_main, "fat16"))
@@ -138,7 +146,8 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
   char script[1024];
   if (!strcmp(o->layout, "main+uefintfs")) {
     // Rufus layout for NTFS/exFAT install media that must also boot UEFI:
-    // the data partition FIRST, a 1 MiB UEFI:NTFS partition LAST.
+    // the data partition FIRST, a 1 MiB UEFI:NTFS partition after it (and,
+    // on GPT, the 1 MiB BIOS boot partition last).
     //  - Windows Setup looks for sources\install.wim on the volumes it can
     //    mount; the data volume has to be the first partition, which is the
     //    only one older WinPE builds show on a removable drive.
@@ -155,13 +164,15 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
                          "(an empty card-reader slot reports 0)", dst, mib);
       return -1;
     }
-    unsigned long long main_mib = mib - 3; // 1 leading + 1 UEFI:NTFS + 1 slack
+    unsigned long long main_mib = mib - 3 - (bios_part ? 1 : 0); // 1 leading + 1 UEFI:NTFS + [1 BIOS boot] + 1 slack
     if (!strcmp(scheme, "gpt"))
       snprintf(script, sizeof script,
                "label: gpt\n"
                "start=1MiB, size=%lluMiB, type=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7, name=\"Windows\"\n"
-               "size=1MiB, type=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7, name=\"UEFI:NTFS\", attrs=\"GUID:63\"\n",
-               main_mib);
+               "size=1MiB, type=EBD0A0A2-B9E5-4433-87C0-68B6B72699C7, name=\"UEFI:NTFS\", attrs=\"GUID:63\"\n"
+               "%s",
+               main_mib,
+               bios_part ? "size=1MiB, type=" BIOS_BOOT_GUID ", name=\"BIOS boot\"\n" : "");
     else
       snprintf(script, sizeof script,
                "label: dos\nstart=1MiB, size=%lluMiB, type=%s, bootable\nsize=1MiB, type=ef\n",
@@ -172,7 +183,22 @@ int rufux_partition(const char *dst, const RufuxPartOpts *o,
       // filesystem type is right for ext* alone.
       const char *gtype = !strcmp(mbr_type, "83") ? "0FC63DAF-8483-4772-8E79-3D69D8477DE4"
                                                    : "EBD0A0A2-B9E5-4433-87C0-68B6B72699C7";
-      snprintf(script, sizeof script, "label: gpt\nstart=1MiB, type=%s\n", gtype);
+      if (!bios_part)
+        snprintf(script, sizeof script, "label: gpt\nstart=1MiB, type=%s\n", gtype);
+      else {
+        // The data partition needs an explicit size once something follows it.
+        unsigned long long mib = target_bytes(dst) >> 20;
+        if (mib < 64) {
+          snprintf(err, cap, "target '%s' reports %llu MiB; a GPT layout with a BIOS boot "
+                             "partition needs at least 64 MiB (an empty card-reader slot reports 0)", dst, mib);
+          return -1;
+        }
+        snprintf(script, sizeof script,
+                 "label: gpt\n"
+                 "start=1MiB, size=%lluMiB, type=%s\n"
+                 "size=1MiB, type=%s, name=\"BIOS boot\"\n",
+                 mib - 3, gtype, BIOS_BOOT_GUID);
+      }
     }
     else
       snprintf(script, sizeof script, "label: dos\nstart=1MiB, type=%s, bootable\n",
