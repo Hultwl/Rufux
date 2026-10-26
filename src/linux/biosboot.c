@@ -77,8 +77,9 @@ static int locate(Grub *g, char *why, unsigned long cap) {
   const char *st[] = {"grub-bios-setup", "grub2-bios-setup", NULL};
   char d1[PATH_MAX + 16], d2[PATH_MAX + 16], d3[PATH_MAX + 16];
   snprintf(d1, sizeof d1, "%.4000s", g->moddir);
-  snprintf(d2, sizeof d2, "%.3900s/../../bin", g->moddir);
-  snprintf(d3, sizeof d3, "%.3900s/../../sbin", g->moddir);
+  // moddir is <prefix>/lib/grub/i386-pc, so the tools sit three levels up.
+  snprintf(d2, sizeof d2, "%.3900s/../../../bin", g->moddir);
+  snprintf(d3, sizeof d3, "%.3900s/../../../sbin", g->moddir);
   const char *dirs[] = {d1, d2, d3, "/usr/sbin", "/usr/bin", NULL};
   if (find_exe(mk, dirs, g->mkimage, sizeof g->mkimage) != 0) {
     snprintf(why, cap, "grub-mkimage is not installed (package grub-common / grub2-tools)");
