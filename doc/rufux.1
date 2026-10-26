@@ -15,7 +15,7 @@ rufux \- bootable USB creator for Linux (Rufus port)
 \fIwrite\fR \fISRC DST\fR [\-\-dry\-run|\-\-real] [\-\-verify] [\-\-allow\-fixed] [\-\-allow\-file] [\-\-yes]
 .br
 .B rufux
-\fIpartition\fR \fIDST\fR \-\-scheme gpt|dos \-\-layout single|esp+main [\-\-real] [\-\-yes] ...
+\fIpartition\fR \fIDST\fR \-\-scheme gpt|dos \-\-layout single|esp+main [\-\-bios\-boot] [\-\-real] [\-\-yes] ...
 .br
 .B rufux
 \fIformat\fR \fIDST\fR \-\-fs vfat|fat16|ntfs|exfat|ext2|ext3|ext4|udf [\-\-label \fIL\fR] [\-\-real] [\-\-yes] ...
@@ -79,8 +79,8 @@ Downloads a Windows 11 or 10 ISO from Microsoft's download service, the same way
 .B Virtual disks
 \fBwrite\fR and \fBcreate \-\-mode dd\fR expand VHDX, dynamic VHD, VMDK, QCOW2 and VDI images with qemu-img. Images that refer to other files are refused.
 .TP
-.B Windows media, MBR scheme
-Also gets legacy BIOS boot code (GRUB 2 in the gap before the first partition, which starts bootmgr) for both FAT32 and NTFS. GPT drives boot on UEFI only.
+.B Windows media, legacy BIOS boot
+Windows media also gets BIOS boot code (GRUB 2, which starts bootmgr) for both FAT32 and NTFS: in the gap before the first partition on MBR, and in a 1 MiB BIOS boot partition at the end of the table on GPT. Without the GRUB i386-pc tools the drive still boots on UEFI, and the log says so.
 .SH EXAMPLES
 List removable drives:
 .PP

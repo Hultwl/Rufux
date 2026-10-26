@@ -1,5 +1,24 @@
 # Changelog
 
+## 2.3.0
+
+- **GPT Windows media boots on legacy BIOS.** A GPT stick used to be
+  UEFI-only. It now carries a 1 MiB BIOS boot partition at the end of the
+  table with GRUB 2's `core.img` in it, so the same drive starts on a BIOS
+  machine and on a UEFI one. MBR already worked this way (GRUB in the gap
+  before the first partition); GPT has no gap to use. Rufus does not offer
+  BIOS boot on GPT at all.
+- `partition --bios-boot` asks for that partition directly, so a layout can be
+  built and inspected without a Windows ISO.
+- Fixed: `--scheme mbr` was not the alias that `partition` documents. `create`
+  compared the scheme against `dos` alone, so `mbr` took the GPT path:
+  `gptmbr.bin` over an MBR table, no legacy BIOS boot code, and a log line
+  calling the drive GPT.
+- Fixed: the GRUB tools were looked for two directories up from the module
+  tree, which is `<prefix>/lib/bin`. They are one level higher.
+- Docs: the README, man page and PORTING.md no longer call GPT UEFI-only, and
+  the runtime requirements mention `grub-pc-bin`.
+
 ## 2.2.1
 
 - Fixed: pressing START always failed with `missing field 'persist_mb'`.
