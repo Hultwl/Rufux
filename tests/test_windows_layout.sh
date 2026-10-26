@@ -25,7 +25,7 @@ for scheme in gpt dos; do
     bad "$scheme burn"; tail -5 $T/log; losetup -d $L; continue
   fi
   tab=$(sfdisk -d $L)
-  p1=$(echo "$tab" | grep "^${L}p1"); p2=$(echo "$tab" | grep "^${L}p2")
+  p1=$(echo "$tab" | grep "^${L}p1"); p2=$(echo "$tab" | grep "^${L}p2"); p3=$(echo "$tab" | grep "^${L}p3")
   echo "$p2" | grep -q "size= *2048," || bad "$scheme: partition 2 is not 1 MiB"
   if [ $scheme = gpt ]; then
     echo "$tab" | grep -q C12A7328 && bad "gpt: a partition is typed ESP (Setup breaks with two ESPs)"
@@ -33,6 +33,10 @@ for scheme in gpt dos; do
     echo "$tab" | grep -qi "B938-11D2" && bad "gpt: a partition carries the bogus basic-data GUID (Windows ignores it)"
     grep -q "type 'unknown'" $T/log && bad "gpt: sfdisk reports an unknown partition type"
     echo "$p2" | grep -q 'attrs="GUID:63"' || bad "gpt: partition 2 lacks the no-drive-letter attribute"
+    # The 1 MiB BIOS boot partition is what lets the drive start on legacy BIOS.
+    echo "$p3" | grep -q "size= *2048," || bad "gpt: partition 3 is not the 1 MiB BIOS boot partition"
+    echo "$p3" | grep -q 'type=21686148-6449-6E6F-744E-656564454649' || bad "gpt: partition 3 is not typed BIOS boot"
+    echo "$p1" | grep -q "start= *2048," || bad "gpt: the data partition no longer comes first"
   else
     echo "$p1" | grep -q "type=7" || bad "dos: data partition is not type 7"
     echo "$p2" | grep -q "type=ef" || bad "dos: partition 2 is not type ef"

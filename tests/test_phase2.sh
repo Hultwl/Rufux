@@ -33,6 +33,13 @@ truncate -s 64M "$IMG"
 truncate -s 64M "$IMG"
 "$RUFUX" partition "$IMG" --scheme dos --layout esp+main --real --allow-file --yes >/dev/null 2>&1 \
   && sfdisk -d "$IMG" 2>/dev/null | grep -q "label: dos" && ok "partition dos esp+main" || bad "partition dos esp+main"
+# GPT with the 1 MiB BIOS boot partition that legacy BIOS boot needs
+truncate -s 64M "$IMG"
+"$RUFUX" partition "$IMG" --scheme gpt --layout single --fs vfat --bios-boot --real --allow-file --yes >/dev/null 2>&1 \
+  && tab=$(sfdisk -d "$IMG" 2>/dev/null) \
+  && echo "$tab" | grep -q 'type=21686148-6449-6E6F-744E-656564454649' \
+  && echo "$tab" | grep -q 'size= *2048, .*name="BIOS boot"' \
+  && ok "partition gpt bios boot" || bad "partition gpt bios boot"
 # safety: without --yes must fail
 truncate -s 64M "$IMG"
 "$RUFUX" partition "$IMG" --scheme gpt --real --allow-file >/dev/null 2>&1 && bad "partition needs --yes" || ok "partition needs --yes"
@@ -189,7 +196,7 @@ fi
 truncate -s 64M "$TMP/dosplan.img"
 "$RUFUX" create none "$TMP/dosplan.img" --mode dos --dry-run --allow-file 2>&1 | grep -q "FreeDOS" \
   && ok "dos dry-run plan" || bad "dos dry-run plan"
-"$RUFUX" create "$TMP/win.iso" "$TMP/diskw.img" --mode windows --scheme gpt --dry-run --allow-file 2>&1 | grep -q "UEFI:NTFS last" \
+"$RUFUX" create "$TMP/win.iso" "$TMP/diskw.img" --mode windows --scheme gpt --dry-run --allow-file 2>&1 | grep -q "1 MiB BIOS boot last" \
   && ok "windows disk plan" || bad "windows disk plan"
 
 echo "--- $pass passed, $fail failed ---"

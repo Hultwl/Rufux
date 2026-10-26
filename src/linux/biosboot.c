@@ -153,15 +153,82 @@ static int read_mbr(const char *disk, unsigned char *mbr) {
   return ok ? 0 : -1;
 }
 
+static int read_at(const char *disk, void *buf, size_t n, off_t off) {
+  int fd = open(disk, O_RDONLY | O_CLOEXEC);
+  if (fd < 0) return -1;
+  ssize_t r = pread(fd, buf, n, off);
+  close(fd);
+  return r == (ssize_t)n ? 0 : -1;
+}
+
+static unsigned long long le64(const unsigned char *p) {
+  unsigned long long v = 0;
+  for (int i = 7; i >= 0; i--) v = (v << 8) | p[i];
+  return v;
+}
+
+static unsigned le32(const unsigned char *p) {
+  return (unsigned)p[0] | (unsigned)p[1] << 8 | (unsigned)p[2] << 16 | (unsigned)p[3] << 24;
+}
+
+// A GPT disk is recognised by its protective MBR: entry 0 typed 0xEE.
+static int is_gpt(const unsigned char *mbr) { return mbr[446 + 4] == 0xEE; }
+
+// First LBA and size (in sectors) of the "BIOS boot" partition, where GRUB
+// embeds core.img on GPT. There is no MBR gap to use on a GPT disk, so a
+// layout without this partition cannot start on legacy BIOS - and saying that
+// here is clearer than letting grub-bios-setup fail on its own.
+static unsigned long long gpt_bios_boot(const char *disk, unsigned long long *sectors,
+                                        char *err, unsigned long cap) {
+  static const unsigned char guid[16] = {
+    0x48, 0x61, 0x68, 0x21, 0x49, 0x64, 0x6f, 0x6e,
+    0x74, 0x4e, 0x65, 0x65, 0x64, 0x45, 0x46, 0x49};
+  unsigned char h[512];
+  if (read_at(disk, h, sizeof h, 512) != 0 || memcmp(h, "EFI PART", 8) != 0) {
+    snprintf(err, cap, "'%s' has no readable GPT header at LBA 1", disk);
+    return 0;
+  }
+  unsigned long long ent = le64(h + 72);
+  unsigned num = le32(h + 80), esz = le32(h + 84);
+  if (ent < 2 || num == 0 || esz < 128 || esz > 4096) {
+    snprintf(err, cap, "'%s' has a malformed GPT header", disk);
+    return 0;
+  }
+  size_t total = (size_t)num * esz;
+  if (total > (1u << 20)) total = 1u << 20;  // the table is 16 KiB in practice; never slurp more
+  unsigned char *ents = malloc(total);
+  if (!ents) { snprintf(err, cap, "out of memory"); return 0; }
+  unsigned long long found = 0;
+  if (read_at(disk, ents, total, (off_t)ent * 512) == 0) {
+    for (unsigned i = 0; (size_t)(i + 1) * esz <= total; i++) {
+      const unsigned char *e = ents + (size_t)i * esz;
+      if (!memcmp(e, guid, sizeof guid)) {
+        found = le64(e + 32);
+        *sectors = le64(e + 40) - found + 1;
+        break;
+      }
+    }
+  }
+  free(ents);
+  if (!found)
+    snprintf(err, cap, "'%s' has no BIOS boot partition, so it cannot start on legacy BIOS "
+                       "(the GPT layout reserves 1 MiB for one)", disk);
+  return found;
+}
+
 int rufux_windows_bios_install(const char *disk, const char *mnt, RufuxBiosLog log, void *lu,
                                char *err, unsigned long cap) {
   Grub g;
   if (locate(&g, err, cap) != 0) return -1;
-  unsigned char before[512], after[512];
+  unsigned char before[512], after[512], hdr[512];
   if (read_mbr(disk, before) != 0 || before[510] != 0x55 || before[511] != 0xAA) {
-    snprintf(err, cap, "'%s' has no MBR partition table (legacy BIOS boot needs the MBR scheme)", disk);
+    snprintf(err, cap, "'%s' has no partition table at all", disk);
     return -1;
   }
+  int gpt = is_gpt(before);
+  unsigned long long part_lba = 0, part_sectors = 0;
+  if (gpt && (part_lba = gpt_bios_boot(disk, &part_sectors, err, cap)) == 0)
+    return -1;
   // The scratch directory lives on the target partition: grub-bios-setup works out the
   // device it is installing for from where its files sit, and it cannot do that for /tmp.
   char work[PATH_MAX], core[PATH_MAX + 16], cfg[PATH_MAX + 16], devmap[PATH_MAX + 16], boot_img[PATH_MAX + 16], mk_out[PATH_MAX + 16];
@@ -202,13 +269,26 @@ int rufux_windows_bios_install(const char *disk, const char *mnt, RufuxBiosLog l
     }
   }
   struct stat cs;
-  stat(core, &cs);
-  unsigned need = (unsigned)((cs.st_size + 511) / 512) + 2;
-  unsigned first = first_part_lba(before);
-  if (first && first < need) {
-    snprintf(err, cap, "the gap before the first partition (%u sectors) is too small for the boot code (%u needed)",
-             first - 1, need - 1);
+  if (stat(core, &cs) != 0) {
+    snprintf(err, cap, "cannot read the generated core.img: %s", strerror(errno));
     goto out;
+  }
+  unsigned need = (unsigned)((cs.st_size + 511) / 512) + 2;
+  if (gpt) {
+    // grub-bios-setup checks this too, but it reports a bare "cannot embed"
+    // and the partition is the one thing the caller can still fix.
+    if (part_sectors < need) {
+      snprintf(err, cap, "the BIOS boot partition at LBA %llu is %llu sectors, too small for the boot code (%u needed)",
+               part_lba, part_sectors, need);
+      goto out;
+    }
+  } else {
+    unsigned first = first_part_lba(before);
+    if (first && first < need) {
+      snprintf(err, cap, "the gap before the first partition (%u sectors) is too small for the boot code (%u needed)",
+               first - 1, need - 1);
+      goto out;
+    }
   }
   const char *su[] = {g.setup, "-d", work, "-b", "boot.img", "-c", "core.img", "-m", devmap,
                       "--skip-fs-probe", "--force", disk, NULL};
@@ -225,11 +305,23 @@ int rufux_windows_bios_install(const char *disk, const char *mnt, RufuxBiosLog l
   // The partition table must survive and the drive must now start with boot code.
   if (read_mbr(disk, after) != 0 || after[510] != 0x55 || after[511] != 0xAA ||
       memcmp(before + 446, after + 446, 66) != 0 || after[0] == 0) {
-    snprintf(err, cap, "boot code installation left the MBR in an unexpected state; not trusting it");
+    snprintf(err, cap, "boot code installation left the partition table in an unexpected state; not trusting it");
     goto out;
   }
+  if (gpt) {
+    // boot.img goes over the protective MBR and core.img into the BIOS boot
+    // partition; the GPT header and its entry array must come out untouched.
+    char gerr[256] = {0};
+    unsigned long long sec = 0;
+    if (read_at(disk, hdr, sizeof hdr, 512) != 0 || memcmp(hdr, "EFI PART", 8) != 0 ||
+        gpt_bios_boot(disk, &sec, gerr, sizeof gerr) == 0) {
+      snprintf(err, cap, "boot code installation left the GPT in an unexpected state; not trusting it");
+      goto out;
+    }
+  }
   rc = 0;
-  if (log) log("Legacy BIOS boot code installed (GRUB 2 in the MBR gap; it starts bootmgr).", lu);
+  if (log) log(gpt ? "Legacy BIOS boot code installed (GRUB 2 in the BIOS boot partition; it starts bootmgr)."
+                   : "Legacy BIOS boot code installed (GRUB 2 in the MBR gap; it starts bootmgr).", lu);
 out:
   rmtree_flat(work);
   return rc;

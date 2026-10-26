@@ -508,12 +508,14 @@ static int flow_dos(const char *dst, const RufuxCreateOpts *o,
 // Windows installation media, laid out like Rufus does it:
 //   partition 1: NTFS, holds the extracted ISO (what Setup reads)
 //   partition 2: 1 MiB UEFI:NTFS, raw image with the EFI loader + NTFS driver
+//   partition 3 (GPT only): 1 MiB BIOS boot, holds GRUB 2's core.img
 // The data partition must come first and the small boot partition must not
 // be typed as an ESP; see partition.c for why. scheme "dos" is the same
-// layout on an MBR table (for UEFI firmwares that want MBR); it does not
-// boot on legacy BIOS, see the note logged at the end of the flow.
+// layout on an MBR table (for UEFI firmwares that want MBR). Both schemes
+// then get legacy BIOS boot code from biosboot.c, so either one starts on a
+// BIOS machine as well as a UEFI one.
 // Layout: partition 0-5, UEFI:NTFS + format 5-10, extract 10-80,
-// unattend 80-88, verify 88-90, unmount 90-100.
+// unattend 80-88, verify 88-90, BIOS boot 90-95, unmount 95-100.
 static int p2_of(const char *p1, char *p2, unsigned long cap) {
   size_t L = strlen(p1);
   if (L < 2 || p1[L - 1] != '1') return -1;
@@ -611,13 +613,16 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
              "steps:\n  1. partition %s %s: %s\n"
              "  2. %s\n"
              "  3. mount partition 1, extract %s%s\n"
-             "  4. Windows customization (%s)\n  5. verify the copied Windows tree%s",
+             "  4. Windows customization (%s)\n  5. verify the copied Windows tree\n"
+             "  6. install legacy BIOS boot code (GRUB 2 %s, starts bootmgr)",
              dst, gpt ? "gpt" : "dos",
-             fat ? "one FAT32 partition" : "NTFS data partition first, 1 MiB UEFI:NTFS last",
+             fat ? (gpt ? "one FAT32 partition, 1 MiB BIOS boot last" : "one FAT32 partition")
+                 : (gpt ? "NTFS data partition first, 1 MiB UEFI:NTFS, 1 MiB BIOS boot last"
+                        : "NTFS data partition first, 1 MiB UEFI:NTFS last"),
              fat ? "format partition 1 as FAT32" : "write UEFI:NTFS image to partition 2 (raw), format partition 1 as NTFS",
              src, fat ? " (install.wim split with wimlib if over 4 GiB)" : "",
              o->wue ? o->wue : "none",
-             gpt ? "" : "\n  6. install legacy BIOS boot code (GRUB 2 in the MBR gap, starts bootmgr)");
+             gpt ? "in the BIOS boot partition" : "in the MBR gap");
     log(m, luser);
     return 0;
   }
@@ -630,7 +635,7 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
     return -1;
   }
   RufuxPartOpts po = {.scheme = gpt ? "gpt" : "dos", .fs_main = fsname,
-                      .layout = fat ? "single" : "main+uefintfs",
+                      .layout = fat ? "single" : "main+uefintfs", .bios_boot = gpt,
                       .dry_run = 0, .allow_fixed = o->allow_fixed, .allow_file = 0, .yes = 1};
   if (rufux_partition(dst, &po, err, cap) != 0) return -1;
   stage(prog, puser, 5);
@@ -699,9 +704,9 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
   }
   stage(prog, puser, 90);
   int bios_ok = 0;
-  if (!rc && !gpt) {
-    // MBR drive: make it boot on legacy BIOS machines too. Not fatal: without it the
-    // drive is still a complete UEFI installer, and the log says so.
+  if (!rc) {
+    // Both schemes get legacy BIOS boot code. Not fatal: without it the drive
+    // is still a complete UEFI installer, and the log says so.
     char be[512] = {0};
     if (log) log("Installing legacy BIOS boot code...", luser);
     if (rufux_windows_bios_install(dst, mnt, log, luser, be, sizeof be) == 0) bios_ok = 1;
@@ -725,9 +730,7 @@ static int flow_windows(const char *src, const char *dst, const RufuxCreateOpts 
     if (rufux_run(nf, 0) != 0 && log)
       log("WARNING: could not clear the NTFS dirty flag (ntfsfix failed).", luser);
   }
-  if (!rc && gpt && log)
-    log("NOTE: this GPT drive boots on UEFI machines only (choose the MBR scheme for legacy BIOS boot too).", luser);
-  if (!rc && !gpt && log)
+  if (!rc && log)
     log(bios_ok ? "This drive boots on both UEFI and legacy BIOS machines."
                 : "NOTE: this drive boots on UEFI machines only (no legacy BIOS boot code was installed).", luser);
   if (!rc) stage(prog, puser, 100);

@@ -42,7 +42,7 @@ static void usage(const char *p) {
          "  %s probe <file.iso> [--detail]\n"
          "  %s checksum <file> [--algo md5|sha1|sha256|sha512]\n"
          "  %s write SRC DST [--dry-run|--real] [--verify] [--allow-fixed] [--allow-file] [--yes]\n"
-         "  %s partition DST --scheme gpt|dos --layout single|esp+main [--fs vfat|fat16|ntfs|exfat|ext2|ext3|ext4] [--dry-run|--real] [--allow-file] [--allow-fixed] [--yes]\n"
+         "  %s partition DST --scheme gpt|dos --layout single|esp+main [--fs vfat|fat16|ntfs|exfat|ext2|ext3|ext4] [--bios-boot] [--dry-run|--real] [--allow-file] [--allow-fixed] [--yes]\n"
          "  %s format DST --fs vfat|fat16|ntfs|exfat|ext2|ext3|ext4|udf [--label L] [--dry-run|--real] [--allow-file] [--allow-fixed] [--yes]\n"
          "  %s extract SRC.iso DEST_DIR [--dry-run]\n"
          "  %s install-boot DST --mbr bios|gpt [--dry-run|--real] [--allow-file] [--allow-fixed] [--yes]\n"
@@ -135,7 +135,7 @@ static const CmdSpec specs[] = {
   {"probe", "--detail", ""},
   {"checksum", "", "--algo"},
   {"write", "--allow-file --allow-fixed --dry-run --real --verify --yes", ""},
-  {"partition", "--allow-file --allow-fixed --dry-run --real --yes", "--fs --layout --scheme"},
+  {"partition", "--allow-file --allow-fixed --bios-boot --dry-run --real --yes", "--fs --layout --scheme"},
   {"format", "--allow-file --allow-fixed --dry-run --real --yes", "--fs --label"},
   {"extract", "--dry-run", ""},
   {"install-boot", "--allow-file --allow-fixed --dry-run --real --yes", "--mbr"},
@@ -364,6 +364,7 @@ int main(int argc, char **argv) {
       if (!strcmp(argv[i], "--scheme") && i + 1 < argc) o.scheme = argv[++i];
       else if (!strcmp(argv[i], "--layout") && i + 1 < argc) o.layout = argv[++i];
       else if (!strcmp(argv[i], "--fs") && i + 1 < argc) o.fs_main = argv[++i];
+      else if (!strcmp(argv[i], "--bios-boot")) o.bios_boot = 1;
       else if (!strcmp(argv[i], "--dry-run")) o.dry_run = 1;
       else if (!strcmp(argv[i], "--real")) o.dry_run = 0;
       else if (!strcmp(argv[i], "--allow-file")) o.allow_file = 1;
