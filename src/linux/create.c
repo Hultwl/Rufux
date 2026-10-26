@@ -739,6 +739,12 @@ int rufux_create(const char *src, const char *dst, const RufuxCreateOpts *o,
                  RufuxCreateLog log, void *luser,
                  char *err, unsigned long errcap) {
   char m[1024];
+  // "mbr" is an alias for "dos" (partition.c); settle it once, here, so every
+  // flow below picks the same table. Before this, --scheme mbr was treated as
+  // GPT by the flows: gptmbr.bin over an MBR table, no legacy BIOS boot code.
+  RufuxCreateOpts norm = *o;
+  if (norm.scheme && !strcmp(norm.scheme, "mbr")) norm.scheme = "dos";
+  o = &norm;
   snprintf(m, sizeof m, "Rufux: %s -> %s [mode=%s scheme=%s fs=%s label=%s]%s",
            src ? src : "(none)", dst, o->mode, o->scheme, o->fs,
            o->label ? o->label : "", o->dry_run ? " [dry-run]" : "");
