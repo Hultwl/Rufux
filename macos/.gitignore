@@ -1,0 +1,7 @@
+build/
+dist/
+vendor/
+gui-tauri/target/
+gui-tauri/gen/
+.superpowers/
+.DS_Store
