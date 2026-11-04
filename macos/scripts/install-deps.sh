@@ -12,6 +12,11 @@ FORMULAE=(
   smartmontools
   qemu
   i686-elf-grub
+  # GNU build system for ntfs-3g's autogen.sh (autoreconf + autopoint)
+  autoconf
+  automake
+  libtool
+  gettext
 )
 
 echo "==> Checking Homebrew dependencies..."
