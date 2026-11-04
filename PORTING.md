@@ -7,6 +7,11 @@ kept in the tree for reference and are not compiled. The Linux code is in
 window, driving the backend over its CLI). The old Qt and GTK windows were
 removed; their sources survive only in git history.
 
+Since 3.0 there is also a native macOS port in `macos/`, contributed by
+@justadudeinbulgaria. It is self-contained — sources, vendored libraries,
+build scripts, tests — and does not modify the Linux sources; this page is
+about the Linux side unless a section says otherwise.
+
 ## Taken from Rufus
 
 - The MBR and boot-record byte arrays from ms-sys (data only)
@@ -29,6 +34,25 @@ removed; their sources survive only in git history.
 Two rules apply everywhere: never touch a non-removable device unless
 "List USB Hard Drives" is on, and every command prints a plan unless
 `--real --yes` is given.
+
+## The macOS port
+
+`macos/` ports the same feature set to Apple Silicon Macs:
+
+| Rufus (Windows) | Rufux (macOS) |
+|---|---|
+| Device enumeration (SetupDi) | IOKit; `/dev/disk0` and the active boot disk are refused even with `--allow-fixed` |
+| Formatting (VDS, `FormatEx`) | `/sbin/newfs_msdos`, `newfs_exfat`, `newfs_udf` (FAT/exFAT/UDF), vendored Tuxera `ntfs-3g` (NTFS), bundled `e2fsprogs` (ext2/3/4) |
+| Partitioning (`IOCTL_DISK_*`) | pure-C protective MBR writer and CRC32-verified primary/backup GPT writer |
+| Mounting | `rufux-mountd`, a localhost NFSv3 + MOUNTv3 loopback daemon paired with `/sbin/mount_nfs` — no kexts, no macFUSE, no Recovery Mode changes |
+| Dialogs | WKWebView through Tauri v2 |
+| Administrator rights | `osascript ... with administrator privileges` for the worker, the window stays unprivileged |
+
+Windows install media works the same way: the UEFI:NTFS dual-partition
+layout, the Windows User Experience `LabConfig` patching (`--wue`) and legacy
+BIOS boot through bundled GRUB i386-pc tools. `macos/scripts/build-dmg.sh`
+produces an ad-hoc signed `Rufux.app` and `Rufux-3.0-macos-arm64.dmg`, and
+the CTest suite in `macos/tests/` covers the whole path.
 
 ## Windows install media
 

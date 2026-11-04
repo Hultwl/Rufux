@@ -5,7 +5,7 @@
 <h1 align="center">Rufux</h1>
 
 <p align="center">
-  Make bootable USB sticks on Linux, the way Rufus does on Windows.
+  Make bootable USB sticks on Linux and macOS, the way Rufus does on Windows.
 </p>
 
 <p align="center">
@@ -26,10 +26,10 @@
 
 ---
 
-Rufux is a port of [Rufus](https://github.com/pbatard/rufus) to Linux. It does
-the same job: pick a drive, pick an ISO, press START. I wrote it because I
-kept wanting Rufus on my Linux machine and `dd` was not enough for Windows
-install media.
+Rufux is a port of [Rufus](https://github.com/pbatard/rufus) to Linux, and
+since 3.0 to Apple Silicon Macs. It does the same job: pick a drive, pick an
+ISO, press START. I wrote it because I kept wanting Rufus on my Linux machine
+and `dd` was not enough for Windows install media.
 
 The window is a copy of Rufus's main window (same sections, same wording,
 same order), rendered 1:1 with web tech instead of native widgets - on
@@ -64,6 +64,13 @@ purpose, so it looks like Rufus everywhere instead of almost-Rufus.
 - **Secure Boot check.** Bootloaders that end up on the drive are checked
   against the UEFI revocation list (DBX), SBAT and the Windows boot manager
   version, and you get a warning if firmware that is up to date will refuse them.
+- **Also on macOS (Apple Silicon).** A native port contributed by
+  @justadudeinbulgaria lives in `macos/`: the same 1:1 window over WKWebView,
+  all eight file systems without kernel extensions (native `newfs` tools,
+  vendored `ntfs-3g` for NTFS, bundled `e2fsprogs` for ext2/3/4), and
+  read-write mounting of NTFS and ext through a userspace NFSv3 loopback
+  daemon — no macFUSE, no Recovery Mode changes. See
+  [macos/README.md](macos/README.md).
 - **Safety.** The command line only prints a plan unless you pass
   `--real --yes` and run as root. Fixed disks are hidden unless you tick
   "List USB Hard Drives".
@@ -86,6 +93,11 @@ purpose, so it looks like Rufus everywhere instead of almost-Rufus.
 `chmod +x Rufux-x86_64.AppImage` and run it.
 
 **Arch:** `paru -S rufux-git`
+
+**macOS (Apple Silicon):** built from source: `bash
+macos/scripts/install-deps.sh`, then `bash macos/scripts/build-dmg.sh`. You
+get an ad-hoc signed `Rufux.app` and `Rufux-3.0-macos-arm64.dmg`. Details in
+[macos/README.md](macos/README.md).
 
 **From source:**
 
@@ -140,6 +152,6 @@ Bug reports help most with the log attached (Log button, then Save).
 ## Credits and license
 
 Port of [pbatard/rufus](https://github.com/pbatard/rufus) by Pete Batard.
-GPLv3, like upstream. It used to be called Lufus; I renamed it to avoid
+The macOS port is by @justadudeinbulgaria. GPLv3, like upstream. It used to be called Lufus; I renamed it to avoid
 confusion with [Hogjects/Lufus](https://github.com/Hogjects/Lufus), which is
 an unrelated project.

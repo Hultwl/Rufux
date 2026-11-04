@@ -4,7 +4,7 @@ set -euo pipefail
 MACOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="${MACOS_DIR}/dist"
 APP_DIR="${DIST_DIR}/Rufux.app"
-DMG_PATH="${DIST_DIR}/Rufux-2.3.0-macos-arm64.dmg"
+DMG_PATH="${DIST_DIR}/Rufux-3.0-macos-arm64.dmg"
 
 export PATH="${HOME}/.cargo/bin${SUDO_USER:+:/Users/${SUDO_USER}/.cargo/bin}:/opt/homebrew/bin:/opt/homebrew/sbin:${PATH}"
 
@@ -34,7 +34,7 @@ rm -f "${DMG_PATH}"
 ln -s /Applications "${STAGE_DIR}/Applications"
 
 /usr/bin/hdiutil create \
-  -volname "Rufux 2.3.0" \
+  -volname "Rufux 3.0" \
   -srcfolder "${STAGE_DIR}" \
   -ov \
   -format UDZO \

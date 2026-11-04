@@ -34,7 +34,7 @@
 #include "writer.h"
 
 #ifndef RUFUX_VERSION
-#define RUFUX_VERSION "2.3.0"
+#define RUFUX_VERSION "3.0"
 #endif
 
 static void usage(const char *p) {

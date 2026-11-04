@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.20)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "13.0" CACHE STRING "Minimum macOS deployment version")
 set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "Target macOS architecture")
-project(Rufux VERSION 2.3.0 LANGUAGES C)
+project(Rufux VERSION 3.0 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)

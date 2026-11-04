@@ -1,5 +1,25 @@
 # Changelog
 
+## 3.0
+
+- **Native macOS port (Apple Silicon), contributed by @justadudeinbulgaria.**
+  A self-contained `macos/` tree builds `Rufux.app` and an ad-hoc signed
+  `Rufux-3.0-macos-arm64.dmg` without touching the Linux build: the same 1:1
+  window over WKWebView (Tauri v2), native formatters for FAT16/FAT32/exFAT/
+  UDF, vendored Tuxera `ntfs-3g` for NTFS, and bundled `e2fsprogs` for
+  ext2/3/4.
+- **Kext-less read-write mounting.** NTFS and ext volumes mount read-write
+  through `rufux-mountd`, a localhost NFSv3 + MOUNTv3 loopback daemon paired
+  with macOS's own `/sbin/mount_nfs`: no `.kext`s, no macFUSE, no Recovery
+  Mode security changes.
+- **Windows install media on macOS too:** the UEFI:NTFS dual-partition
+  layout, Windows User Experience hive patching (`--wue`), and legacy BIOS
+  boot through bundled GRUB i386-pc tools. The boot disk and `/dev/disk0`
+  are refused unconditionally, even with `--allow-fixed`.
+- Eight automated CTest suites cover the core, device writer, partitioning
+  and boot, file systems, read-write mounting, end-to-end creation, and the
+  bundle and DMG (`ctest --test-dir macos/build`).
+
 ## 2.3.0
 
 - **GPT Windows media boots on legacy BIOS.** A GPT stick used to be

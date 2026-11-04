@@ -1,12 +1,12 @@
 # Rufux for macOS (Apple Silicon `arm64`)
 
-Native macOS port of **Rufux 2.3.0** — the open-source bootable USB formatting and OS installation utility modeled 1:1 on Rufus. All macOS source code, vendored libraries, build scripts, automated tests, and packaged artifacts live inside this self-contained `macos/` directory without modifying the upstream Linux repository root.
+Native macOS port of **Rufux 3.0** — the open-source bootable USB formatting and OS installation utility modeled 1:1 on Rufus. All macOS source code, vendored libraries, build scripts, automated tests, and packaged artifacts live inside this self-contained `macos/` directory without modifying the upstream Linux repository root.
 
 ## Highlights
 
 - **Self-Contained `Rufux.app` & `.dmg` (`macos/dist/`):**
   - `macos/dist/Rufux.app` (ad-hoc signed inside-out, zero external `/opt/homebrew` library links)
-  - `macos/dist/Rufux-2.3.0-macos-arm64.dmg` (compressed UDZO disk image with `Rufux.app` + `/Applications` symlink, ad-hoc signed)
+  - `macos/dist/Rufux-3.0-macos-arm64.dmg` (compressed UDZO disk image with `Rufux.app` + `/Applications` symlink, ad-hoc signed)
 - **All 8 Filesystems Supported Without Kernel Extensions:**
   - **FAT16 / FAT32 / exFAT / UDF:** Native macOS formatters (`/sbin/newfs_msdos`, `/sbin/newfs_exfat`, `/sbin/newfs_udf`).
   - **NTFS:** Vendored Tuxera `ntfs-3g 2026.9.28` (`mkntfs`, `ntfsfix`, and direct in-process `libntfs-3g` streaming population in `ntfs_populate.c`).
@@ -37,7 +37,7 @@ macos/
 ├── src/                        # Native macOS C11 CLI backend & NFSv3 mount daemon
 ├── gui-tauri/                  # macOS Tauri v2 desktop application crate
 ├── tests/                      # Rootless CTest unit, integration, and clean-room bundle tests
-└── dist/                       # Output artifacts: Rufux.app and Rufux-2.3.0-macos-arm64.dmg
+└── dist/                       # Output artifacts: Rufux.app and Rufux-3.0-macos-arm64.dmg
 ```
 
 ## Building from Source
@@ -48,7 +48,7 @@ macos/
 bash macos/scripts/install-deps.sh
 ```
 
-### 2. Build `Rufux.app` and `Rufux-2.3.0-macos-arm64.dmg`
+### 2. Build `Rufux.app` and `Rufux-3.0-macos-arm64.dmg`
 
 ```bash
 bash macos/scripts/build-dmg.sh
@@ -56,14 +56,14 @@ bash macos/scripts/build-dmg.sh
 
 This produces:
 - `macos/dist/Rufux.app`
-- `macos/dist/Rufux-2.3.0-macos-arm64.dmg`
+- `macos/dist/Rufux-3.0-macos-arm64.dmg`
 
 ### 3. Verify Bundle Self-Containment & Ad-Hoc Signatures
 
 ```bash
 codesign --verify --deep --strict --verbose=2 macos/dist/Rufux.app
-codesign --verify --verbose=2 macos/dist/Rufux-2.3.0-macos-arm64.dmg
-hdiutil verify macos/dist/Rufux-2.3.0-macos-arm64.dmg
+codesign --verify --verbose=2 macos/dist/Rufux-3.0-macos-arm64.dmg
+hdiutil verify macos/dist/Rufux-3.0-macos-arm64.dmg
 ```
 
 ### 4. Run the Automated CTest Suite

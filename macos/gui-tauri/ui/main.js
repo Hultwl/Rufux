@@ -940,7 +940,7 @@ async function boot() {
     wire();
     try {
       const info = await invoke("backend_info");
-      logLine(`Rufux 2.3.0 (backend: ${info.bin})`);
+      logLine(`Rufux 3.0 (backend: ${info.bin})`);
     } catch (e) { logLine("Backend missing: " + e); }
     try {
       await armJobEvents();

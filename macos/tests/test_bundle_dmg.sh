@@ -4,7 +4,7 @@ set -euo pipefail
 MACOS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ROOT_DIR="$(cd "${MACOS_DIR}/.." && pwd)"
 APP_DIR="${1:-${MACOS_DIR}/dist/Rufux.app}"
-DMG_PATH="${2:-${MACOS_DIR}/dist/Rufux-2.3.0-macos-arm64.dmg}"
+DMG_PATH="${2:-${MACOS_DIR}/dist/Rufux-3.0-macos-arm64.dmg}"
 
 TMP="$(mktemp -d /tmp/rufux-test-bundle-dmg-XXXXXX)"
 CLEAN_ROOT="/tmp/Rufux Clean App Test"
