@@ -1,0 +1,66 @@
+name: macos
+
+# Builds the macOS (Apple Silicon) app bundle and DMG and attaches it to
+# the published release, so mac users download like the AppImage. Also
+# compile-tests macos/ changes on push.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "macos/**"
+      - ".github/workflows/macos.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Upload the DMG to this release (e.g. v3.0); empty = artifact only"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # Apple Silicon runner on purpose: the port targets arm64
+    # (macos/README.md), and the vendored ntfs-3g builds -arch arm64.
+    runs-on: macos-14
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install deps (Homebrew + vendored ntfs-3g)
+        run: bash macos/scripts/install-deps.sh
+
+      - name: Build Rufux.app and the DMG
+        # build-dmg.sh: CMake backend -> icns -> cargo GUI -> bundle-app.sh
+        # (relocate dylibs, ad-hoc sign inside-out) -> UDZO DMG -> sign.
+        run: bash macos/scripts/build-dmg.sh
+
+      - name: Verify the bundle
+        run: |
+          codesign --verify --deep --strict --verbose=2 macos/dist/Rufux.app
+          codesign --verify --verbose=2 macos/dist/*.dmg
+          hdiutil verify macos/dist/*.dmg
+          ls -lh macos/dist/
+
+      - name: Test
+        # Rootless CTest suites (unit, integration, clean-room bundle env -i).
+        # Non-blocking for now: the suites passed on the contributor's machine
+        # but this is their first hosted-runner pass. Failures still show on
+        # the run; make it blocking once proven stable.
+        continue-on-error: true
+        run: ctest --test-dir macos/build --output-on-failure
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Rufux-DMG
+          path: macos/dist/*.dmg
+
+      - name: Attach to release
+        if: github.event_name == 'release' || inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+        run: gh release upload "$RELEASE_TAG" macos/dist/*.dmg --clobber

@@ -15,7 +15,12 @@ FORMULAE=(
 )
 
 echo "==> Checking Homebrew dependencies..."
-INSTALLED="$(sudo -H -u sk /opt/homebrew/bin/brew list --formula)"
+# Brew refuses root. When the script is sudoed, drop to the invoking user;
+# otherwise (CI runners, direct runs) use the current user. Override with
+# MACOS_BREW_USER if the default does not fit.
+BREW_USER="${MACOS_BREW_USER:-${SUDO_USER:-$(id -un)}}"
+echo "==> Using brew as: ${BREW_USER}"
+INSTALLED="$(sudo -H -u "${BREW_USER}" /opt/homebrew/bin/brew list --formula)"
 MISSING=()
 for pkg in "${FORMULAE[@]}"; do
   if ! printf '%s\n' "${INSTALLED}" | grep -qx "${pkg}"; then
@@ -24,8 +29,8 @@ for pkg in "${FORMULAE[@]}"; do
 done
 
 if [ "${#MISSING[@]}" -gt 0 ]; then
-  echo "==> Installing missing Homebrew formulae as sk: ${MISSING[*]}"
-  sudo -H -u sk env HOMEBREW_ASK= HOMEBREW_NO_AUTO_UPDATE=1 /opt/homebrew/bin/brew install "${MISSING[@]}" </dev/null
+  echo "==> Installing missing Homebrew formulae as ${BREW_USER}: ${MISSING[*]}"
+  sudo -H -u "${BREW_USER}" env HOMEBREW_ASK= HOMEBREW_NO_AUTO_UPDATE=1 /opt/homebrew/bin/brew install "${MISSING[@]}" </dev/null
 else
   echo "==> All required Homebrew formulae already installed."
 fi
