@@ -12,6 +12,7 @@ FORMULAE=(
   smartmontools
   qemu
   i686-elf-grub
+  wimlib
   # GNU build system for ntfs-3g's autogen.sh (autoreconf + autopoint)
   autoconf
   automake
